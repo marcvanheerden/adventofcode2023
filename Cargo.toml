@@ -1,0 +1,23 @@
+[workspace]
+members = [ 
+	"problems/day01",
+]
+
+[package]
+name = "adventofcode2023"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.8.5"
+tokio = { version = "1.33.0", features = ["full"] }
+day01 = { path = "problems/day01" }
+opentelemetry = { version = "0.20", features = ["trace"] }
+opentelemetry-stdout = { version = "0.1", features = ["trace"] }
+opentelemetry_api = "0.20.0"
+tracing = "0.1.40"
+tracing-opentelemetry = "0.21.0"
+tracing-subscriber = "0.3.17"
+

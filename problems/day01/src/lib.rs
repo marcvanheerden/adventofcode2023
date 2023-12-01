@@ -1,91 +1,125 @@
+use rustc_hash::FxHashMap;
 use tokio::sync::mpsc::Receiver;
-use std::collections::HashMap;
 
-async fn calc_line(line: String) -> (u32, u32) {
-     
-    let mut numbers = HashMap::new();
-    numbers.insert("one", '1');
-    numbers.insert("two", '2');
-    numbers.insert("three", '3');
-    numbers.insert("four", '4');
-    numbers.insert("five", '5');
-    numbers.insert("six", '6');
-    numbers.insert("seven", '7');
-    numbers.insert("eight", '8');
-    numbers.insert("nine", '9');
-    numbers.insert("1", '1');
-    numbers.insert("2", '2');
-    numbers.insert("3", '3');
-    numbers.insert("4", '4');
-    numbers.insert("5", '5');
-    numbers.insert("6", '6');
-    numbers.insert("7", '7');
-    numbers.insert("8", '8');
-    numbers.insert("9", '9');
-    numbers.insert("0", '0');
-   
+struct WordTrace<'a> {
+    start_pos: usize,
+    word: &'a str,
+    completed: usize,
+    length: usize,
+}
+
+async fn calc_line2(line: String) -> (u32, u32) {
     let mut total_part1 = 0;
     let mut total_part2 = 0;
-    
-    let mut first: Option<char> = None;
-    let mut last: char = '~';
-    
-    for chr in line.chars() {
-        if chr.is_digit(10) {
-            if first.is_none() {
-                first = Some(chr);
+
+    let number_pairs = [
+        ("one", '1'),
+        ("two", '2'),
+        ("three", '3'),
+        ("four", '4'),
+        ("five", '5'),
+        ("six", '6'),
+        ("seven", '7'),
+        ("eight", '8'),
+        ("nine", '9'),
+        ("1", '1'),
+        ("2", '2'),
+        ("3", '3'),
+        ("4", '4'),
+        ("5", '5'),
+        ("6", '6'),
+        ("7", '7'),
+        ("8", '8'),
+        ("9", '9'),
+        ("0", '0'),
+    ];
+
+    let numbers: FxHashMap<&str, char> = number_pairs.into_iter().collect();
+    let mut first_part1: Option<char> = None;
+    let mut last_part1: char = '~';
+    let mut first_part2: Option<char> = None;
+    let mut last_part2: char = '~';
+
+    let mut candidate_words = Vec::new();
+
+    for (pos, chr) in line.chars().enumerate() {
+        // part1 
+        if chr.is_ascii_digit() {
+            if first_part1.is_none() {
+                first_part1 = Some(chr);
             }
-            last = chr;
+            last_part1 = chr;
         }
-    }
-    
-    if let Some(first_digit) = first {
-        total_part1 += format!("{first_digit}{last}").parse::<u32>().unwrap();
-    }
-    
-    // Part 2
-    let mut first: Option<char> = None;
-    let mut last: char = '~';
 
-    let mut value_position = HashMap::new();
-    
-    for (str_rep, num_rep) in &numbers {
-        let mut start = 0usize;
-        while let Some(pos) = line[start..].find(str_rep) {
-            let actual_pos = start + pos;
-            //start = actual_pos + str_rep.len();
-            start += 1;
-            value_position.insert(actual_pos, *num_rep);
-        }
-    }
+        // step to next character candidate words 
+        candidate_words = candidate_words
+            .into_iter()
+            .filter_map(|wt: WordTrace| {
+                if wt.word.chars().nth(wt.completed).unwrap() == chr {
+                    Some(WordTrace {
+                        start_pos: wt.start_pos,
+                        word: wt.word,
+                        completed: wt.completed + 1,
+                        length: wt.length,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-    for pos in 0..line.len() {
-        if let Some(&value) = value_position.get(&pos) {
-            if first.is_none() {
-                first = Some(value);
+        // check if new word traces are starting
+        for word in numbers.keys() {
+            if word.chars().next().unwrap() == chr {
+                candidate_words.push(WordTrace {
+                    start_pos: pos,
+                    word,
+                    completed: 1,
+                    length: word.len(),
+                });
             }
-            last = value;
+        }
+        
+        // if a candidate word is completed, update first/last words
+        for word_trace in candidate_words
+            .iter()
+            .filter(|wt| wt.completed >= wt.length)
+        {
+            // can only be length of 0 or 1 due to the words in number_pairs.keys()
+            let digit = numbers.get(word_trace.word);
+            if first_part2.is_none() {
+                first_part2 = digit.copied();
+            }
+            last_part2 = *digit.unwrap();
+        }
+
+        // remove completed candidate words 
+        candidate_words.retain(|wt| wt.completed < wt.length);
+    }
+
+    if let Some(first_digit) = first_part1 {
+        if let Ok(diff) = format!("{first_digit}{last_part1}").parse::<u32>() {
+            total_part1 += diff;
         }
     }
 
-    if let Some(first_digit) = first {
-        total_part2 += format!("{first_digit}{last}").parse::<u32>().unwrap();
+    if let Some(first_digit) = first_part2 {
+        if let Ok(diff) = format!("{first_digit}{last_part2}").parse::<u32>() {
+            total_part2 += diff;
+        }
     }
 
     (total_part1, total_part2)
 }
 
 pub async fn solve(mut rx: Receiver<String>) {
-
     let mut total_part1 = 0;
     let mut total_part2 = 0;
 
     let mut tasks = Vec::new();
- 
+
     while let Some(line) = rx.recv().await {
-        let task = tokio::spawn(async move {
-            calc_line(line).await
-        });
+        let task = tokio::spawn(async move { calc_line2(line).await });
 
         tasks.push(task);
     }
@@ -95,8 +129,7 @@ pub async fn solve(mut rx: Receiver<String>) {
             total_part1 += delta1;
             total_part2 += delta2;
         }
-    }   
+    }
 
     println!("Part 1: {total_part1} Part 2: {total_part2}");
 }
-

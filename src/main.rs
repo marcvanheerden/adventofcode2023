@@ -4,8 +4,6 @@ use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() {
-
-
     let day = std::env::args().nth(1).expect("Please provide_day number");
     let test = std::env::args().nth(2).is_some_and(|s| s == "test");
     let large = std::env::args().nth(2).is_some_and(|s| s == "large");
@@ -24,7 +22,7 @@ async fn main() {
         .collect::<Vec<String>>();
 
     let (tx, rx) = mpsc::channel(100_000);
- 
+
     tokio::spawn(async move {
         input_simulator::simulate_user_input(tx, input_data).await;
     });
@@ -34,6 +32,3 @@ async fn main() {
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }
-
-
-

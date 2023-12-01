@@ -9,4 +9,3 @@ pub async fn simulate_user_input(tx: Sender<String>, input_data: Vec<String>) {
 
     println!("Finished sending data");
 }
-

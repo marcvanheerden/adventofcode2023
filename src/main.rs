@@ -12,11 +12,11 @@ async fn main() {
 
     let filename = match (test, large) {
         (true, false) => format!("problems/day{}/input_test.txt", day),
-        (false, true) => format!("problems/day{}/input_large.txt", day),
+        (false, true) => format!("problems/day{day}/day{day}_big_input.txt"),
         (false, false) => format!("problems/day{}/input.txt", day),
         (true, true) => panic!("incompatible options"),
     };
-
+    dbg!(&filename);
     let input_data = std::fs::read_to_string(filename)
         .expect("Can't read input file")
         .lines()

@@ -29,6 +29,7 @@ async fn main() {
 
     match day.as_str() {
         "01" => day01::solve(rx).await,
+        "02" => day02::solve(rx).await,
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }

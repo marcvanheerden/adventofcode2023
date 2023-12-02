@@ -9,30 +9,35 @@ struct WordTrace<'a> {
 }
 
 async fn find_number_part1<I>(iter: I) -> Option<char>
-where I: Iterator<Item = char>,
+where
+    I: Iterator<Item = char>,
 {
     for chr in iter {
         if chr.is_ascii_digit() {
-            return Some(chr)
+            return Some(chr);
         }
     }
     None
 }
 
-async fn find_number_part2<I>(iter: I, numbers: &FxHashMap<&str, char>, reverse_words: bool) -> Option<char> 
-where I: Iterator<Item = char>,
+async fn find_number_part2<I>(
+    iter: I,
+    numbers: &FxHashMap<&str, char>,
+    reverse_words: bool,
+) -> Option<char>
+where
+    I: Iterator<Item = char>,
 {
-    
     let mut candidate_words = Vec::new();
-    
+
     for (pos, chr) in iter.enumerate() {
-        
-        // step to next character candidate words 
+        // step to next character candidate words
         candidate_words = candidate_words
             .into_iter()
             .filter_map(|wt: WordTrace| {
-                if (!reverse_words & (wt.word.chars().nth(wt.completed).unwrap() == chr)) | 
-                    (reverse_words & (wt.word.chars().rev().nth(wt.completed).unwrap() == chr)) {
+                if (!reverse_words & (wt.word.chars().nth(wt.completed).unwrap() == chr))
+                    | (reverse_words & (wt.word.chars().rev().nth(wt.completed).unwrap() == chr))
+                {
                     Some(WordTrace {
                         start_pos: wt.start_pos,
                         word: wt.word,
@@ -47,8 +52,9 @@ where I: Iterator<Item = char>,
 
         // check if new word traces are starting
         for word in numbers.keys() {
-            if (!reverse_words & (word.chars().next().unwrap() == chr)) | 
-                 (reverse_words & (word.chars().rev().next().unwrap() == chr)) {
+            if (!reverse_words & (word.chars().next().unwrap() == chr))
+                | (reverse_words & (word.chars().next_back().unwrap() == chr))
+            {
                 candidate_words.push(WordTrace {
                     start_pos: pos,
                     word,
@@ -59,17 +65,16 @@ where I: Iterator<Item = char>,
         }
 
         // if a candidate word is completed, update first/last words
-        for word_trace in candidate_words
+        if let Some(word_trace) = candidate_words
             .iter()
             .filter(|wt| wt.completed >= wt.length)
+            .next()
         {
             return numbers.get(word_trace.word).copied();
         }
-
     }
     None
 }
-
 
 async fn calc_line(line: String) -> (u32, u32) {
     let number_pairs = [
@@ -98,12 +103,22 @@ async fn calc_line(line: String) -> (u32, u32) {
 
     let first_digit_part1 = find_number_part1(line.chars()).await.unwrap();
     let last_digit_part1 = find_number_part1(line.chars().rev()).await.unwrap();
-    
-    let first_digit_part2 = find_number_part2(line.chars(), &numbers, false).await.unwrap();
-    let last_digit_part2 = find_number_part2(line.chars().rev(), &numbers, true).await.unwrap();
 
-    (format!("{first_digit_part1}{last_digit_part1}").parse::<u32>().unwrap(),
-        format!("{first_digit_part2}{last_digit_part2}").parse::<u32>().unwrap())
+    let first_digit_part2 = find_number_part2(line.chars(), &numbers, false)
+        .await
+        .unwrap();
+    let last_digit_part2 = find_number_part2(line.chars().rev(), &numbers, true)
+        .await
+        .unwrap();
+
+    (
+        format!("{first_digit_part1}{last_digit_part1}")
+            .parse::<u32>()
+            .unwrap(),
+        format!("{first_digit_part2}{last_digit_part2}")
+            .parse::<u32>()
+            .unwrap(),
+    )
 }
 
 pub async fn solve(mut rx: Receiver<String>) {

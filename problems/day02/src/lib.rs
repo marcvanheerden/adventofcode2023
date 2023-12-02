@@ -1,5 +1,5 @@
-use tokio::sync::mpsc::Receiver;
 use std::str::FromStr;
+use tokio::sync::mpsc::Receiver;
 
 struct CubeTally {
     red: usize,
@@ -9,9 +9,7 @@ struct CubeTally {
 
 impl CubeTally {
     fn sufficient(&self, other: &CubeTally) -> bool {
-        (self.red >= other.red) & 
-            (self.green >= other.green) &
-            (self.blue >= other.blue)
+        (self.red >= other.red) & (self.green >= other.green) & (self.blue >= other.blue)
     }
 }
 
@@ -19,8 +17,12 @@ impl FromStr for CubeTally {
     type Err = Box<dyn std::error::Error>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut tally = CubeTally { red: 0, green: 0, blue: 0 };
-        
+        let mut tally = CubeTally {
+            red: 0,
+            green: 0,
+            blue: 0,
+        };
+
         for colour_pair in s.split(", ") {
             let (count, colour) = colour_pair.trim().split_once(' ').unwrap();
             match colour {
@@ -36,20 +38,29 @@ impl FromStr for CubeTally {
 }
 
 async fn calc_line(line: String) -> (u32, usize) {
-
-    let ref_cubes = CubeTally { red: 12, green: 13, blue: 14 };
+    let ref_cubes = CubeTally {
+        red: 12,
+        green: 13,
+        blue: 14,
+    };
 
     let (game, draws) = line.split_once(':').unwrap();
 
-    let cube_tallies: Vec<CubeTally> = draws.split(';')
+    let cube_tallies: Vec<CubeTally> = draws
+        .split(';')
         .map(|s| CubeTally::from_str(s).expect("couldn't parse tally"))
         .collect();
 
-    let all_valid =  cube_tallies.iter().all(|c| ref_cubes.sufficient(c));
+    let all_valid = cube_tallies.iter().all(|c| ref_cubes.sufficient(c));
 
     let score = if all_valid {
-        game.trim().split_once(' ').unwrap().1.parse::<u32>().unwrap()
-    } else { 
+        game.trim()
+            .split_once(' ')
+            .unwrap()
+            .1
+            .parse::<u32>()
+            .unwrap()
+    } else {
         0
     };
 

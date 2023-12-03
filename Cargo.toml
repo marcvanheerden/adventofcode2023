@@ -1,6 +1,6 @@
 [workspace]
 members = [ 
-	"problems/day01", "problems/day02",
+	"problems/day01", "problems/day02", "problems/day03",
 ]
 
 [package]
@@ -15,3 +15,4 @@ rand = "0.8.5"
 tokio = { version = "1.33.0", features = ["full"] }
 day01 = { path = "problems/day01" }
 day02 = { path = "problems/day02" }
+day03 = { path = "problems/day03" }

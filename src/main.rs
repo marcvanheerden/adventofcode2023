@@ -22,14 +22,26 @@ async fn main() {
         .collect::<Vec<String>>();
 
     let (tx, rx) = mpsc::channel(100_000);
+    let (tx2, rx2) = mpsc::channel(100_000);
 
-    tokio::spawn(async move {
-        input_simulator::simulate_user_input(tx, input_data).await;
-    });
+    match day.as_str() {
+        "01" | "02" => {
+            tokio::spawn(async move {
+                input_simulator::simulate_user_input(tx, input_data).await;
+            });
+        }
+        "03" => {
+            tokio::spawn(async move {
+                input_simulator::simulate_user_input_enumerated(tx2, input_data).await;
+            });
+        }
+        _ => eprintln!("Solution for day {} not implemented", day),
+    };
 
     match day.as_str() {
         "01" => day01::solve(rx).await,
         "02" => day02::solve(rx).await,
+        "03" => day03::solve(rx2).await,
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }

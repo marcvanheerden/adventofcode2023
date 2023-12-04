@@ -1,6 +1,6 @@
 [workspace]
 members = [ 
-	"problems/day01", "problems/day02", "problems/day03",
+	"problems/day01", "problems/day02", "problems/day03", "problems/day04",
 ]
 
 [package]
@@ -16,3 +16,4 @@ tokio = { version = "1.33.0", features = ["full"] }
 day01 = { path = "problems/day01" }
 day02 = { path = "problems/day02" }
 day03 = { path = "problems/day03" }
+day04 = { path = "problems/day04" }

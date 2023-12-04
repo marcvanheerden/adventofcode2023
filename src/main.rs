@@ -30,7 +30,7 @@ async fn main() {
                 input_simulator::simulate_user_input(tx, input_data).await;
             });
         }
-        "03" => {
+        "03" | "04" => {
             tokio::spawn(async move {
                 input_simulator::simulate_user_input_enumerated(tx2, input_data).await;
             });
@@ -42,6 +42,7 @@ async fn main() {
         "01" => day01::solve(rx).await,
         "02" => day02::solve(rx).await,
         "03" => day03::solve(rx2).await,
+        "04" => day04::solve(rx2).await,
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }

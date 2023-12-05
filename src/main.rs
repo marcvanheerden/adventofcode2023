@@ -15,17 +15,24 @@ async fn main() {
         (true, true) => panic!("incompatible options"),
     };
     dbg!(&filename);
-    let input_data = std::fs::read_to_string(filename)
-        .expect("Can't read input file")
-        .lines()
-        .map(|s| s.to_string())
-        .collect::<Vec<String>>();
+    let input_data = match day.as_str() {
+        "05" => std::fs::read_to_string(filename)
+            .expect("Can't read input file")
+            .split("\n\n")
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>(),
+        _ => std::fs::read_to_string(filename)
+            .expect("Can't read input file")
+            .lines()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>(),
+    };
 
     let (tx, rx) = mpsc::channel(100_000);
     let (tx2, rx2) = mpsc::channel(100_000);
 
     match day.as_str() {
-        "01" | "02" => {
+        "01" | "02" | "05" => {
             tokio::spawn(async move {
                 input_simulator::simulate_user_input(tx, input_data).await;
             });
@@ -43,6 +50,7 @@ async fn main() {
         "02" => day02::solve(rx).await,
         "03" => day03::solve(rx2).await,
         "04" => day04::solve(rx2).await,
+        "05" => day05::solve(rx).await,
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }

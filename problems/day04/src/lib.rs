@@ -25,11 +25,15 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
     }
 
     let mut total_score = 0;
-    let mut match_map = HashMap::new();
+    let mut match_map = Vec::new();
 
     for task in tasks {
         if let Ok((card_no, matches)) = task.await {
-            match_map.insert(card_no, matches);
+            if match_map.len() < (card_no + 1) {
+                match_map.resize(card_no + 1, 0);
+            }
+            match_map[card_no] = matches;
+
             if matches == 0 {
                 continue;
             }
@@ -38,28 +42,23 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
         }
     }
 
-    let cards = match_map.keys().max().unwrap();
+    let cards = match_map.len();
     let mut memo = HashMap::new();
     let mut card_count = 0usize;
 
-    for card in 0..=*cards {
+    for card in 0..=cards {
         card_count += card_recurse(card, &match_map, &mut memo);
     }
 
     println!("Part 1: {total_score} Part 2: {card_count}");
 }
 
-fn card_recurse(
-    idx: usize,
-    matches: &HashMap<usize, usize>,
-    memo: &mut HashMap<usize, usize>,
-) -> usize {
+fn card_recurse(idx: usize, matches: &[usize], memo: &mut HashMap<usize, usize>) -> usize {
     if let Some(mem) = memo.get(&idx) {
         return *mem;
     }
     let mut total = 1;
-    let match_count = matches.get(&idx).unwrap();
-    for card in (idx + 1)..=(idx + match_count) {
+    for card in (idx + 1)..=(idx + matches[idx]) {
         total += card_recurse(card, matches, memo);
     }
     memo.insert(idx, total);

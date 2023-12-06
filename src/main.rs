@@ -21,6 +21,26 @@ async fn main() {
             .split("\n\n")
             .map(|s| s.to_string())
             .collect::<Vec<String>>(),
+        "06" => {
+            let rows = std::fs::read_to_string(filename)
+                .expect("Can't read input file")
+                .lines()
+                .map(|l| {
+                    let (_feature, values) = l.split_once(':').unwrap();
+                    values
+                        .split(' ')
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>()
+                })
+                .collect::<Vec<Vec<String>>>();
+
+            rows[0]
+                .iter()
+                .zip(rows[1].iter())
+                .map(|(s1, s2)| format!("{s1} {s2}"))
+                .collect::<Vec<String>>()
+        }
         _ => std::fs::read_to_string(filename)
             .expect("Can't read input file")
             .lines()
@@ -32,7 +52,7 @@ async fn main() {
     let (tx2, rx2) = mpsc::channel(100_000);
 
     match day.as_str() {
-        "01" | "02" | "05" => {
+        "01" | "02" | "05" | "06" => {
             tokio::spawn(async move {
                 input_simulator::simulate_user_input(tx, input_data).await;
             });
@@ -51,6 +71,7 @@ async fn main() {
         "03" => day03::solve(rx2).await,
         "04" => day04::solve(rx2).await,
         "05" => day05::solve(rx).await,
+        "06" => day06::solve(rx).await,
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }

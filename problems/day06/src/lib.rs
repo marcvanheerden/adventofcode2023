@@ -1,8 +1,6 @@
 use tokio::sync::mpsc::Receiver;
 
 async fn calc_line(line: &str) -> usize {
-    dbg!(line);
-
     let (time, distance) = line.split_once(' ').unwrap();
     let time = time.parse::<usize>().unwrap();
     let distance = distance.parse::<usize>().unwrap();
@@ -26,6 +24,6 @@ pub async fn solve(mut rx: Receiver<String>) {
         }
     }
 
-    let part1 = ways_to_win.into_iter().product::<usize>();
-    println!("Part 1: {part1} Part 2: ");
+    let answer = ways_to_win.into_iter().product::<usize>();
+    println!("Output: {answer}");
 }

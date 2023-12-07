@@ -165,20 +165,27 @@ pub async fn solve(mut rx: Receiver<String>) {
         }
     }
 
-    hand_bet_pairs_part1.sort_by(|(hand1, _), (hand2, _)| hand1.cmp(hand2));
-    hand_bet_pairs_part2.sort_by(|(hand1, _), (hand2, _)| hand1.cmp(hand2));
+    let part1 = tokio::spawn(async move {
+        hand_bet_pairs_part1.sort_by(|(hand1, _), (hand2, _)| hand1.cmp(hand2));
 
-    let part1 = hand_bet_pairs_part1
-        .iter()
-        .enumerate()
-        .map(|(idx, (_hand, bet))| (idx + 1) * bet)
-        .sum::<usize>();
+        hand_bet_pairs_part1
+            .iter()
+            .enumerate()
+            .map(|(idx, (_hand, bet))| (idx + 1) * bet)
+            .sum::<usize>()
+    });
 
-    let part2 = hand_bet_pairs_part2
-        .iter()
-        .enumerate()
-        .map(|(idx, (_hand, bet))| (idx + 1) * bet)
-        .sum::<usize>();
+    let part2 = tokio::spawn(async move {
+        hand_bet_pairs_part2.sort_by(|(hand1, _), (hand2, _)| hand1.cmp(hand2));
+        hand_bet_pairs_part2
+            .iter()
+            .enumerate()
+            .map(|(idx, (_hand, bet))| (idx + 1) * bet)
+            .sum::<usize>()
+    });
+
+    let part1 = part1.await.unwrap();
+    let part2 = part2.await.unwrap();
 
     println!("Part 1: {part1}, Part 2: {part2}");
 }

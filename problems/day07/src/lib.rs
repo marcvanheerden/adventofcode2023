@@ -72,14 +72,6 @@ impl Hand {
     }
 
     fn _new_jokers(s: &str) -> Self {
-        if !s.contains('J') {
-            let mut hand = Self::_new_no_jokers(s);
-            let new_values: Vec<_> = hand.values.into_iter().map(|v| v + 1).collect();
-            hand.values = new_values.try_into().unwrap();
-
-            return hand;
-        }
-
         let new_s = s.replace('J', &Self::_joker_best_replacement(s).to_string());
         let mut hand = Self::_new_no_jokers(&new_s);
 
@@ -105,15 +97,7 @@ impl Hand {
         }
 
         if let Some(&max) = counter.values().max() {
-            let mut ties: Vec<_> = counter
-                .into_iter()
-                .filter(|(_chr, count)| *count == max)
-                .map(|(chr, _count)| (Card::from(chr) as u8, chr))
-                .collect();
-
-            ties.sort_by(|(card_value1, _), (card_value2, _)| card_value1.cmp(card_value2));
-
-            if let Some((_card_value, chr)) = ties.into_iter().next_back() {
+            if let Some((chr, _count)) = counter.into_iter().find(|(_chr, count)| *count == max) {
                 return chr;
             }
         }

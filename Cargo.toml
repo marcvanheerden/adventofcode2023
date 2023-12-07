@@ -1,6 +1,6 @@
 [workspace]
 members = [ 
-	"problems/day01", "problems/day02", "problems/day03", "problems/day04", "problems/day05", "problems/day06",
+	"problems/day01", "problems/day02", "problems/day03", "problems/day04", "problems/day05", "problems/day06", "problems/day07",
 ]
 
 [package]
@@ -19,3 +19,4 @@ day03 = { path = "problems/day03" }
 day04 = { path = "problems/day04" }
 day05 = { path = "problems/day05" }
 day06 = { path = "problems/day06" }
+day07 = { path = "problems/day07" }

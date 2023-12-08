@@ -1,6 +1,6 @@
 [workspace]
 members = [ 
-	"problems/day01", "problems/day02", "problems/day03", "problems/day04", "problems/day05", "problems/day06", "problems/day07",
+	"problems/day01", "problems/day02", "problems/day03", "problems/day04", "problems/day05", "problems/day06", "problems/day07", "problems/day08", "problems/day09", "problems/day10", "problems/day11", "problems/day12", "problems/day13", "problems/day14", "problems/day15", "problems/day16", "problems/day17", "problems/day18", "problems/day19", "problems/day20", "problems/day21", "problems/day22", "problems/day23", "problems/day24", "problems/day25",
 ]
 
 [package]
@@ -20,3 +20,21 @@ day04 = { path = "problems/day04" }
 day05 = { path = "problems/day05" }
 day06 = { path = "problems/day06" }
 day07 = { path = "problems/day07" }
+day08 = { path = "problems/day08" }
+day09 = { path = "problems/day09" }
+day10 = { path = "problems/day10" }
+day11 = { path = "problems/day11" }
+day12 = { path = "problems/day12" }
+day13 = { path = "problems/day13" }
+day14 = { path = "problems/day14" }
+day15 = { path = "problems/day15" }
+day16 = { path = "problems/day16" }
+day17 = { path = "problems/day17" }
+day18 = { path = "problems/day18" }
+day19 = { path = "problems/day19" }
+day20 = { path = "problems/day20" }
+day21 = { path = "problems/day21" }
+day22 = { path = "problems/day22" }
+day23 = { path = "problems/day23" }
+day24 = { path = "problems/day24" }
+day25 = { path = "problems/day25" }

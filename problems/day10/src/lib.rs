@@ -3,7 +3,6 @@
 use colored::Colorize;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
@@ -28,28 +27,52 @@ impl Direction {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-struct Animal {
-    heading: Direction,
+struct Step {
+    start_heading: Direction,
+    end_heading: Direction,
     location: (usize, usize),
 }
 
-impl Animal {
+impl Step {
     fn right_side(&self, loc: &(usize, usize)) -> bool {
-        match self.heading {
+        let start = match self.start_heading {
             Direction::N => *loc == (self.location.0 + 1, self.location.1),
             Direction::E => *loc == (self.location.0, self.location.1 + 1),
             Direction::S => self.location == (loc.0 + 1, loc.1),
             Direction::W => self.location == (loc.0, loc.1 + 1),
-        }
+        };
+
+        let end = match self.end_heading {
+            Direction::N => *loc == (self.location.0 + 1, self.location.1),
+            Direction::E => *loc == (self.location.0, self.location.1 + 1),
+            Direction::S => self.location == (loc.0 + 1, loc.1),
+            Direction::W => self.location == (loc.0, loc.1 + 1),
+        };
+
+        start | end
     }
     fn left_side(&self, loc: &(usize, usize)) -> bool {
-        match self.heading {
+        let start = match self.start_heading {
             Direction::S => *loc == (self.location.0 + 1, self.location.1),
             Direction::W => *loc == (self.location.0, self.location.1 + 1),
             Direction::N => self.location == (loc.0 + 1, loc.1),
             Direction::E => self.location == (loc.0, loc.1 + 1),
-        }
+        };
+        let end = match self.end_heading {
+            Direction::S => *loc == (self.location.0 + 1, self.location.1),
+            Direction::W => *loc == (self.location.0, self.location.1 + 1),
+            Direction::N => self.location == (loc.0 + 1, loc.1),
+            Direction::E => self.location == (loc.0, loc.1 + 1),
+        };
+
+        start | end
     }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+struct Animal {
+    heading: Direction,
+    location: (usize, usize),
 }
 
 #[derive(Debug)]
@@ -130,7 +153,7 @@ impl Pipe {
 
 type PipeMap = Arc<Mutex<HashMap<(usize, usize), Pipe>>>;
 
-async fn follow_animal(start: (usize, usize), pipemap: PipeMap) -> Vec<Animal> {
+async fn follow_animal(start: (usize, usize), pipemap: PipeMap) -> Vec<Step> {
     let steps = [(1, 0), (0, 1)];
     let dirs = [Direction::E, Direction::S];
 
@@ -148,15 +171,16 @@ async fn follow_animal(start: (usize, usize), pipemap: PipeMap) -> Vec<Animal> {
         // check that there is a pipe in that spot
         if let Some(pipe) = pmap.get(&(start.0 + step.0, start.1 + step.1)) {
             if pipe.pass(&mut animal) {
-                path.push(Animal {
-                    heading: dir,
+                path.push(Step {
+                    start_heading: dir,
+                    end_heading: dir,
                     location: start,
                 });
-                path.push(Animal {
-                    heading: dir,
+                path.push(Step {
+                    start_heading: dir,
+                    end_heading: dir,
                     location: (start.0 + step.0, start.1 + step.1),
                 });
-                //path.push(animal.clone());
                 break;
             }
         }
@@ -169,11 +193,13 @@ async fn follow_animal(start: (usize, usize), pipemap: PipeMap) -> Vec<Animal> {
     let pmap = pipemap.lock().await;
     while animal.location != start {
         if let Some(pipe) = pmap.get(&animal.location) {
-            let last_loc = animal.location;
+            let last_heading = animal.heading;
+            let last_location = animal.location;
             pipe.pass(&mut animal);
-            path.push(Animal {
-                heading: animal.heading,
-                location: last_loc,
+            path.push(Step {
+                start_heading: last_heading,
+                end_heading: animal.heading,
+                location: last_location,
             });
         } else {
             // data still being populated, wait a few ms
@@ -185,7 +211,7 @@ async fn follow_animal(start: (usize, usize), pipemap: PipeMap) -> Vec<Animal> {
     path
 }
 
-async fn process_line(line: &str, line_no: usize, pipemap: PipeMap) -> Option<Vec<Animal>> {
+async fn process_line(line: &str, line_no: usize, pipemap: PipeMap) -> Option<Vec<Step>> {
     let add_pipes = line
         .chars()
         .map(Pipe::new)
@@ -207,12 +233,7 @@ async fn process_line(line: &str, line_no: usize, pipemap: PipeMap) -> Option<Ve
     None
 }
 
-fn count_enclosed(
-    max_rows: usize,
-    max_cols: usize,
-    path: &[Animal],
-    print: bool,
-) -> (usize, usize) {
+fn count_enclosed(max_rows: usize, max_cols: usize, path: &[Step], print: bool) -> (usize, usize) {
     let mut nonpath_cells = Vec::new();
     let path_positions: Vec<_> = path.iter().map(|a| a.location).collect();
     for row in 0..=max_rows {
@@ -243,8 +264,6 @@ fn count_enclosed(
         } else {
             current_area.append(&mut flood);
         }
-        dbg!(&nonpath_cells.len());
-        dbg!(&current_area.len());
     }
 
     areas.push(current_area);
@@ -252,24 +271,20 @@ fn count_enclosed(
     let right: Vec<_> = areas
         .clone()
         .into_iter()
-        .filter(|a| !a.iter().any(|c| path.iter().any(|a| a.right_side(c))))
+        .filter(|a| a.iter().any(|c| path.iter().any(|a| a.right_side(c))))
         .flatten()
         .collect();
 
     let left: Vec<_> = areas
         .into_iter()
-        .filter(|a| !a.iter().any(|c| path.iter().any(|a| a.left_side(c))))
+        .filter(|a| a.iter().any(|c| path.iter().any(|a| a.left_side(c))))
         .flatten()
         .collect();
 
-    let left_in_right: Vec<_> = left.iter().filter(|c| right.contains(c)).collect();
-
-    dbg!(&left_in_right);
-
-    //assert_eq!(
-    //    (max_rows + 1) * (max_cols + 1),
-    //    right.len() + left.len() + path.len()
-    //);
+    assert_eq!(
+        (max_rows + 1) * (max_cols + 1),
+        right.len() + left.len() + path.len()
+    );
 
     println!();
     if print {

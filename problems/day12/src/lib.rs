@@ -6,8 +6,8 @@ const PART2_SCALE: usize = 5;
 
 #[derive(Debug, Clone, PartialEq, Copy, Eq, Hash)]
 enum Spring {
-    Operational,
     Damaged,
+    Operational,
     Unknown,
 }
 
@@ -15,8 +15,8 @@ impl Spring {
     fn new(chr: char) -> Self {
         match chr {
             '?' => Self::Unknown,
-            '.' => Self::Damaged,
-            '#' => Self::Operational,
+            '.' => Self::Operational,
+            '#' => Self::Damaged,
             _ => panic!("invalid spring input"),
         }
     }
@@ -70,14 +70,14 @@ impl RunCalc {
     fn assess(&mut self) {
         let next_spring = self.springs.pop().expect("assessing empty spring list");
         match (self.open, next_spring) {
-            (true, Spring::Operational) => {
+            (true, Spring::Damaged) => {
                 let run_length = self.runs.len() - 1;
                 self.runs[run_length] += 1;
             }
-            (true, Spring::Damaged) => {
+            (true, Spring::Operational) => {
                 self.open = false;
             }
-            (false, Spring::Operational) => {
+            (false, Spring::Damaged) => {
                 self.open = true;
                 self.runs.push(1);
             }
@@ -96,12 +96,12 @@ impl RunCalc {
 
         let mut out1 = self.clone();
         out1.springs.pop();
-        out1.springs.push(Spring::Operational);
+        out1.springs.push(Spring::Damaged);
         out1.assess();
 
         let mut out2 = self.clone();
         out2.springs.pop();
-        out2.springs.push(Spring::Damaged);
+        out2.springs.push(Spring::Operational);
         out2.assess();
 
         vec![out1, out2]

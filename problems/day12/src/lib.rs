@@ -20,6 +20,97 @@ impl Spring {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct RunCalc {
+    idx: usize,    // how far the run calc has gone
+    runs: Vec<u8>, // current runs calculated
+    open: bool,    // whether the last run is still open (could increase)
+    springs: Vec<Spring>,
+    equivalent_count: usize, // count for collapsing equivalent candidates together
+}
+
+impl RunCalc {
+    fn new(springs: Vec<Spring>) -> Self {
+        Self {
+            idx: 0,
+            runs: Vec::new(),
+            open: false,
+            springs,
+            equivalent_count: 1,
+        }
+    }
+
+    fn valid(&self, target: &[u8]) -> bool {
+        if self.idx == self.springs.len() {
+            return self.runs == target;
+        }
+
+        if self.open {
+            let matches: Vec<_> = self
+                .runs
+                .iter()
+                .zip(target.iter())
+                .map(|(s, t)| s == t)
+                .collect();
+
+            let closed = matches.iter().rev().skip(1).all(|&b| b);
+
+            if self.runs.len() > target.len() {
+                return false;
+            }
+
+            let run_len = self.runs.len() - 1;
+            let open = target[run_len] >= self.runs[run_len];
+
+            return open & closed;
+        }
+
+        self.runs.iter().zip(target.iter()).all(|(s, t)| s == t)
+    }
+
+    fn assess(&mut self) {
+        match (self.open, self.springs[self.idx]) {
+            (true, Spring::Operational) => {
+                let run_length = self.runs.len() - 1;
+                self.runs[run_length] += 1;
+            }
+            (true, Spring::Damaged) => {
+                self.open = false;
+            }
+            (false, Spring::Operational) => {
+                self.open = true;
+                self.runs.push(1);
+            }
+            (_, _) => (),
+        }
+        self.idx += 1;
+    }
+
+    fn step(&self) -> Vec<Self> {
+        // terminal condition?
+
+        if self.springs[self.idx] != Spring::Unknown {
+            let mut out = self.clone();
+            out.assess();
+            return vec![out];
+        }
+
+        let mut out1 = self.clone();
+        out1.springs[out1.idx] = Spring::Operational;
+        out1.assess();
+
+        let mut out2 = self.clone();
+        out2.springs[out2.idx] = Spring::Damaged;
+        out2.assess();
+
+        return vec![out1, out2];
+    }
+
+    fn collapse(&self, _other: &Self) -> Vec<Self> {
+        Vec::new()
+    }
+}
+
 async fn calc_line(line: &str) -> (usize, usize) {
     let (springs_str, counts_str) = line.split_once(' ').unwrap();
 
@@ -29,120 +120,34 @@ async fn calc_line(line: &str) -> (usize, usize) {
         .map(|s| s.parse::<u8>().unwrap())
         .collect();
 
-    let mut springs2: Vec<_> = (0..PART2_SCALE)
-        .map(|_| {
-            let mut s = springs.clone();
-            s.push(Spring::Unknown);
-            s
-        })
-        .flatten()
-        .collect();
+    //let mut springs2: Vec<_> = (0..PART2_SCALE)
+    //    .map(|_| {
+    //        let mut s = springs.clone();
+    //        s.push(Spring::Unknown);
+    //        s
+    //    })
+    //    .flatten()
+    //    .collect();
 
-    springs2 = springs2.into_iter().rev().skip(1).rev().collect();
+    //springs2 = springs2.into_iter().rev().skip(1).rev().collect();
 
-    let counts2: Vec<_> = (0..PART2_SCALE).map(|_| counts.clone()).flatten().collect();
+    //let counts2: Vec<_> = (0..PART2_SCALE).map(|_| counts.clone()).flatten().collect();
 
-    (options(springs, counts), options(springs2, counts2))
-}
+    //(options(springs, counts), options(springs2, counts2))
 
-fn options(springs: Vec<Spring>, counts: Vec<u8>) -> usize {
-    let unknowns = springs.iter().filter(|&s| s == &Spring::Unknown).count();
+    let length = springs.len();
+    let mut run_calcs = vec![RunCalc::new(springs)];
 
-    let mut candidate_springs = vec![springs];
-    for _ in 0..unknowns {
-        candidate_springs = candidate_springs
-            .iter()
-            .map(|s| spring_options(s))
+    for _ in 0..length {
+        run_calcs = run_calcs
+            .into_iter()
+            .map(|rc| rc.step())
             .flatten()
-            .filter(|v| check_runs(v, &counts))
+            .filter(|rc| rc.valid(&counts))
             .collect();
     }
 
-    candidate_springs.iter().count()
-}
-
-fn spring_options(springs: &[Spring]) -> Vec<Vec<Spring>> {
-    let mut new_springs = Vec::new();
-
-    for (idx, spring) in springs.iter().enumerate() {
-        match spring {
-            Spring::Unknown => {
-                new_springs.push(springs.to_vec());
-                new_springs.push(springs.to_vec());
-                new_springs[0][idx] = Spring::Operational;
-                new_springs[1][idx] = Spring::Damaged;
-                break;
-            }
-            _ => (),
-        }
-    }
-
-    new_springs
-}
-
-fn check_runs(springs: &[Spring], target: &[u8]) -> bool {
-    // short-circuit reject spring patterns that don't match
-    let mut operational = false;
-    let mut target = target.iter();
-    let mut count_buffer = 0u8;
-
-    for (idx, spring) in springs.iter().enumerate() {
-        let min_remaining_space: u8 = target.clone().skip(1).map(|x| x + 1).sum();
-
-        if (springs.len() - idx) < min_remaining_space as usize {
-            return false;
-        }
-
-        match (operational, *spring) {
-            // stop checking if you hit an unknown
-            (_, Spring::Unknown) => {
-                if let Some(&next_target) = target.next() {
-                    if next_target < count_buffer {
-                        return false;
-                    } else {
-                        return true;
-                    }
-                } else {
-                    return true;
-                }
-            }
-            (false, Spring::Operational) => {
-                operational = true;
-                count_buffer += 1;
-            }
-            (true, Spring::Operational) => {
-                count_buffer += 1;
-            }
-            (true, Spring::Damaged) => {
-                if let Some(next_target) = target.next() {
-                    if count_buffer != *next_target {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
-                operational = false;
-                count_buffer = 0;
-            }
-            (_, _) => (),
-        }
-    }
-
-    if count_buffer > 0 {
-        if let Some(next_target) = target.next() {
-            if count_buffer != *next_target {
-                return false;
-            }
-        } else {
-            return false;
-        }
-    }
-
-    if target.next().is_some() {
-        false
-    } else {
-        true
-    }
+    (run_calcs.len(), 0)
 }
 
 pub async fn solve(mut rx: Receiver<String>) {
@@ -163,23 +168,4 @@ pub async fn solve(mut rx: Receiver<String>) {
     }
 
     println!("Part 1: {part1} Part 2: {part2}");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn run_checker() {
-        let op = Spring::Operational;
-        let da = Spring::Damaged;
-        assert!(check_runs(&[da, op, op, da, op, da], &[2, 1]));
-        assert!(!check_runs(&[da, op, op, da, op, da], &[2, 1, 1]));
-        assert!(!check_runs(&[da, op, op, da, op, da], &[1, 2]));
-        assert!(!check_runs(&[da, op, op, da, op, da], &[2]));
-        assert!(check_runs(&[da, op, op, da, op, da, op], &[2, 1, 1]));
-        assert!(!check_runs(&[da, op, op, da, op, da, op], &[2, 1, 2]));
-        assert!(!check_runs(&[da, op, op, da, op, da, op], &[2, 1, 1, 2]));
-        assert!(!check_runs(&[da, op, op, da, op, da, op], &[2, 1]));
-    }
 }

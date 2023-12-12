@@ -22,26 +22,23 @@ impl Spring {
 
 #[derive(Debug, Clone, PartialEq)]
 struct RunCalc {
-    idx: usize,    // how far the run calc has gone
     runs: Vec<u8>, // current runs calculated
     open: bool,    // whether the last run is still open (could increase)
     springs: Vec<Spring>,
-    equivalent_count: usize, // count for collapsing equivalent candidates together
 }
 
 impl RunCalc {
     fn new(springs: Vec<Spring>) -> Self {
         Self {
-            idx: 0,
             runs: Vec::new(),
             open: false,
-            springs,
-            equivalent_count: 1,
+            // reverse the springs so we can pop off springs as we go
+            springs: springs.into_iter().rev().collect(),
         }
     }
 
     fn valid(&self, target: &[u8]) -> bool {
-        if self.idx == self.springs.len() {
+        if self.springs.is_empty() {
             return self.runs == target;
         }
 
@@ -69,7 +66,8 @@ impl RunCalc {
     }
 
     fn assess(&mut self) {
-        match (self.open, self.springs[self.idx]) {
+        let next_spring = self.springs.pop().expect("assessing empty spring list");
+        match (self.open, next_spring) {
             (true, Spring::Operational) => {
                 let run_length = self.runs.len() - 1;
                 self.runs[run_length] += 1;
@@ -83,24 +81,25 @@ impl RunCalc {
             }
             (_, _) => (),
         }
-        self.idx += 1;
     }
 
     fn step(&self) -> Vec<Self> {
         // terminal condition?
 
-        if self.springs[self.idx] != Spring::Unknown {
+        if self.springs.last().expect("one step too far") != &Spring::Unknown {
             let mut out = self.clone();
             out.assess();
             return vec![out];
         }
 
         let mut out1 = self.clone();
-        out1.springs[out1.idx] = Spring::Operational;
+        out1.springs.pop();
+        out1.springs.push(Spring::Operational);
         out1.assess();
 
         let mut out2 = self.clone();
-        out2.springs[out2.idx] = Spring::Damaged;
+        out2.springs.pop();
+        out2.springs.push(Spring::Damaged);
         out2.assess();
 
         return vec![out1, out2];

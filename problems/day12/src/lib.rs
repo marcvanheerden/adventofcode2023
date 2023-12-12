@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
 use tokio::sync::mpsc::Receiver;
 
 const PART2_SCALE: usize = 5;
 
-#[derive(Debug, Clone, PartialEq, Copy)]
+#[derive(Debug, Clone, PartialEq, Copy, Eq, Hash)]
 enum Spring {
     Operational,
     Damaged,
@@ -20,7 +22,7 @@ impl Spring {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct RunCalc {
     runs: Vec<u8>, // current runs calculated
     open: bool,    // whether the last run is still open (could increase)
@@ -102,12 +104,34 @@ impl RunCalc {
         out2.springs.push(Spring::Damaged);
         out2.assess();
 
-        return vec![out1, out2];
+        vec![out1, out2]
+    }
+}
+
+fn possible_arrangements(springs: Vec<Spring>, counts: Vec<u8>) -> usize {
+    let length = springs.len();
+    let mut run_calcs = HashMap::new();
+    run_calcs.insert(RunCalc::new(springs), 1);
+
+    for _ in 0..length {
+        let updates: Vec<_> = run_calcs
+            .into_iter()
+            .flat_map(|(rc, count)| {
+                rc.step()
+                    .into_iter()
+                    .map(|rc1| (rc1, count))
+                    .collect::<Vec<(RunCalc, usize)>>()
+            })
+            .filter(|(rc, _count)| rc.valid(&counts))
+            .collect();
+
+        run_calcs = HashMap::new();
+        for (rc, count) in updates {
+            *run_calcs.entry(rc).or_insert(0) += count;
+        }
     }
 
-    fn collapse(&self, _other: &Self) -> Vec<Self> {
-        Vec::new()
-    }
+    run_calcs.values().sum()
 }
 
 async fn calc_line(line: &str) -> (usize, usize) {
@@ -119,34 +143,22 @@ async fn calc_line(line: &str) -> (usize, usize) {
         .map(|s| s.parse::<u8>().unwrap())
         .collect();
 
-    //let mut springs2: Vec<_> = (0..PART2_SCALE)
-    //    .map(|_| {
-    //        let mut s = springs.clone();
-    //        s.push(Spring::Unknown);
-    //        s
-    //    })
-    //    .flatten()
-    //    .collect();
+    let mut springs2: Vec<_> = (0..PART2_SCALE)
+        .flat_map(|_| {
+            let mut s = springs.clone();
+            s.push(Spring::Unknown);
+            s
+        })
+        .collect();
 
-    //springs2 = springs2.into_iter().rev().skip(1).rev().collect();
+    springs2 = springs2.into_iter().rev().skip(1).rev().collect();
 
-    //let counts2: Vec<_> = (0..PART2_SCALE).map(|_| counts.clone()).flatten().collect();
+    let counts2: Vec<_> = (0..PART2_SCALE).map(|_| counts.clone()).flatten().collect();
 
-    //(options(springs, counts), options(springs2, counts2))
-
-    let length = springs.len();
-    let mut run_calcs = vec![RunCalc::new(springs)];
-
-    for _ in 0..length {
-        run_calcs = run_calcs
-            .into_iter()
-            .map(|rc| rc.step())
-            .flatten()
-            .filter(|rc| rc.valid(&counts))
-            .collect();
-    }
-
-    (run_calcs.len(), 0)
+    (
+        possible_arrangements(springs, counts),
+        possible_arrangements(springs2, counts2),
+    )
 }
 
 pub async fn solve(mut rx: Receiver<String>) {

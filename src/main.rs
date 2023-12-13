@@ -16,7 +16,7 @@ async fn main() {
     };
     dbg!(&filename);
     let input_data = match day.as_str() {
-        "05" => std::fs::read_to_string(filename)
+        "05" | "13" => std::fs::read_to_string(filename)
             .expect("Can't read input file")
             .split("\n\n")
             .map(|s| s.to_string())
@@ -77,6 +77,7 @@ async fn main() {
         "10" => day10::solve(rx2).await,
         "11" => day11::solve(rx2).await,
         "12" => day12::solve(rx).await,
+        "13" => day13::solve(rx).await,
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }

@@ -3,14 +3,14 @@ use std::ops::Range;
 use std::str::FromStr;
 use tokio::sync::mpsc::Receiver;
 
-const BLEED: i32 = 1;
+const BLEED: usize = 1;
 
 #[derive(Debug)]
 struct Mirror {
     values: Vec<bool>,
-    row_len: i32,
-    col_len: i32,
-    flip: Option<i32>,
+    row_len: usize,
+    col_len: usize,
+    flip: Option<usize>,
 }
 
 impl FromStr for Mirror {
@@ -22,8 +22,8 @@ impl FromStr for Mirror {
             .map(|l| l.trim())
             .filter(|l| !l.is_empty())
             .collect();
-        let row_len = lines[0].len() as i32;
-        let col_len = lines.len() as i32;
+        let row_len = lines[0].len();
+        let col_len = lines.len();
 
         let values = lines
             .into_iter()
@@ -42,9 +42,8 @@ impl FromStr for Mirror {
 }
 
 impl Mirror {
-    fn _get(&self, x: i32, y: i32) -> Option<bool> {
-        let reject = (x < 0) | (y < 0) | (x >= self.row_len) | (y >= self.col_len);
-        if reject {
+    fn _get(&self, x: usize, y: usize) -> Option<bool> {
+        if (x >= self.row_len) | (y >= self.col_len) {
             return None;
         }
 
@@ -52,14 +51,14 @@ impl Mirror {
 
         if let Some(flipped_bit) = self.flip {
             if index1d == flipped_bit {
-                return Some(!self.values[index1d as usize]);
+                return Some(!self.values[index1d]);
             }
         }
 
-        Some(self.values[index1d as usize])
+        Some(self.values[index1d])
     }
 
-    fn _mirror_zip(&self, split: i32, horizontal: bool) -> Zip<Rev<Range<i32>>, Range<i32>> {
+    fn _mirror_zip(&self, split: usize, horizontal: bool) -> Zip<Rev<Range<usize>>, Range<usize>> {
         // get the pairs of indices that should be equal in a reflection
         let limit = if horizontal {
             self.col_len
@@ -69,7 +68,7 @@ impl Mirror {
         (0..split).rev().zip(split..limit)
     }
 
-    fn vertical_reflection(&self, ignore: i32) -> Option<i32> {
+    fn vertical_reflection(&self, ignore: usize) -> Option<usize> {
         'a: for split in BLEED..=(self.row_len - BLEED) {
             if split == ignore {
                 continue;
@@ -87,7 +86,7 @@ impl Mirror {
         None
     }
 
-    fn horizontal_reflection(&self, ignore: i32) -> Option<i32> {
+    fn horizontal_reflection(&self, ignore: usize) -> Option<usize> {
         'a: for split in BLEED..=(self.col_len - BLEED) {
             if split == ignore {
                 continue;
@@ -104,20 +103,19 @@ impl Mirror {
 
         None
     }
-}
+    fn summarize(&self, ignore_vert: usize, ignore_hori: usize) -> (usize, usize) {
+        let mut vert_score = 0;
+        let mut hori_score = 0;
 
-fn summarize(mirror: &Mirror, ignore_vert: i32, ignore_hori: i32) -> (i32, i32) {
-    let mut vert_score = 0;
-    let mut hori_score = 0;
+        if let Some(split) = self.vertical_reflection(ignore_vert) {
+            vert_score = split;
+        }
+        if let Some(split) = self.horizontal_reflection(ignore_hori) {
+            hori_score = split;
+        }
 
-    if let Some(split) = mirror.vertical_reflection(ignore_vert) {
-        vert_score = split;
+        (vert_score, hori_score)
     }
-    if let Some(split) = mirror.horizontal_reflection(ignore_hori) {
-        hori_score = split;
-    }
-
-    (vert_score, hori_score)
 }
 
 pub async fn solve(mut rx: Receiver<String>) {
@@ -126,11 +124,11 @@ pub async fn solve(mut rx: Receiver<String>) {
     while let Some(mirror) = rx.recv().await {
         let task = tokio::spawn(async move {
             let mut mirr = Mirror::from_str(&mirror).unwrap();
-            let ref_score = summarize(&mirr, 0, 0);
+            let ref_score = mirr.summarize(0, 0);
 
             for bit in 0..(mirr.row_len * mirr.col_len) {
                 mirr.flip = Some(bit);
-                let score = summarize(&mirr, ref_score.0, ref_score.1);
+                let score = mirr.summarize(ref_score.0, ref_score.1);
 
                 if (score.0 > 0) & (score.0 != ref_score.0) {
                     return (ref_score.0 + ref_score.1 * 100, score.0);

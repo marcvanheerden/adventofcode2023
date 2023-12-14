@@ -71,7 +71,6 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
     tilt(&mut rocks1, line_count, line_len, Dir::W);
     tilt(&mut rocks1, line_count, line_len, Dir::S);
     tilt(&mut rocks1, line_count, line_len, Dir::E);
-    let load = get_load(&rocks1, line_count);
 
     let mut cycles = 1usize;
     let target_cycles = 1000000000usize;
@@ -93,6 +92,7 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
     println!("Part 1: {part1} Part 2: {part2}");
 }
 
+#[derive(Clone, Copy, Debug)]
 enum Dir {
     N,
     S,
@@ -132,63 +132,54 @@ fn tilt(rocks: &mut Vec<Rock>, rows: usize, cols: usize, dir: Dir) {
     };
 
     for line in steps.into_iter() {
-        let to_move: Vec<Rock> = rocks
-            .extract_if(|rock| {
-                let loc = match dir {
-                    Dir::N | Dir::S => (rock.row, rock.col),
-                    _ => (rock.col, rock.row),
+        for rock in rocks.iter_mut() {
+            let loc = match dir {
+                Dir::N | Dir::S => (rock.row, rock.col),
+                _ => (rock.col, rock.row),
+            };
+
+            if line != loc.0 {
+                continue;
+            }
+
+            if !rock.moves {
+                let stack = stack_top.entry(loc.1).or_insert(loc.0);
+                *stack = loc.0;
+                continue;
+            }
+
+            let mut space_to_move = true;
+            if let Some(stop) = stack_top.get(&loc.1) {
+                let next_dir_of_gravity = match dir {
+                    Dir::E | Dir::S => loc.0 + 1,
+                    Dir::W | Dir::N => loc.0 - 1,
                 };
-
-                if line != loc.0 {
-                    return false;
+                if *stop == next_dir_of_gravity {
+                    space_to_move = false;
                 }
-
-                if !rock.moves {
-                    let stack = stack_top.entry(loc.1).or_insert(loc.0);
-                    *stack = loc.0;
-                    return false;
-                }
-                let mut space_to_move = true;
-                if let Some(stop) = stack_top.get(&loc.1) {
-                    let next_dir_of_gravity = match dir {
-                        Dir::E | Dir::S => loc.0 + 1,
-                        Dir::W | Dir::N => loc.0 - 1,
-                    };
-                    if *stop == next_dir_of_gravity {
-                        space_to_move = false;
-                    }
-                    match dir {
-                        Dir::E | Dir::S => stack_top.insert(loc.1, stop - 1),
-                        Dir::W | Dir::N => stack_top.insert(loc.1, stop + 1),
-                    };
-                } else {
-                    match dir {
-                        Dir::E => stack_top.insert(loc.1, cols - 1),
-                        Dir::S => stack_top.insert(loc.1, rows - 1),
-                        Dir::W | Dir::N => stack_top.insert(loc.1, 0),
-                    };
+                match dir {
+                    Dir::E | Dir::S => stack_top.insert(loc.1, stop - 1),
+                    Dir::W | Dir::N => stack_top.insert(loc.1, stop + 1),
                 };
+            } else {
+                match dir {
+                    Dir::E => stack_top.insert(loc.1, cols - 1),
+                    Dir::S => stack_top.insert(loc.1, rows - 1),
+                    Dir::W | Dir::N => stack_top.insert(loc.1, 0),
+                };
+            };
 
-                space_to_move
-            })
-            .collect();
-
-        let mut to_move = to_move
-            .into_iter()
-            .map(|rock| match dir {
-                Dir::N | Dir::S => Rock {
-                    row: *stack_top.get(&rock.col).unwrap(),
-                    col: rock.col,
-                    moves: rock.moves,
-                },
-                Dir::E | Dir::W => Rock {
-                    row: rock.row,
-                    col: *stack_top.get(&rock.row).unwrap(),
-                    moves: rock.moves,
-                },
-            })
-            .collect();
-
-        rocks.append(&mut to_move);
+            match (space_to_move, dir) {
+                (true, Dir::N | Dir::S) => {
+                    rock.row = *stack_top.get(&rock.col).unwrap();
+                }
+                (true, Dir::E | Dir::W) => {
+                    rock.col = *stack_top.get(&rock.row).unwrap();
+                }
+                (_, _) => {
+                    ();
+                }
+            }
+        }
     }
 }

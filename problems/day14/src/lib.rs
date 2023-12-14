@@ -1,26 +1,45 @@
-#![feature(btree_extract_if)]
-use std::collections::BTreeMap;
+#![feature(extract_if)]
+use std::collections::HashMap;
 use tokio::sync::mpsc::Receiver;
 
-type RockMap = BTreeMap<(usize, usize), bool>;
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+struct Rock {
+    row: usize,
+    col: usize,
+    moves: bool,
+}
 
-async fn get_rocks(row: usize, line: &str) -> RockMap {
-    let mut rocks = BTreeMap::new();
+async fn get_rocks(row: usize, line: &str) -> Vec<Rock> {
+    let mut rocks = Vec::new();
     for (col, chr) in line.chars().enumerate() {
         match chr {
-            'O' => rocks.insert((row, col), true),
-            '#' => rocks.insert((row, col), false),
-            _ => None,
+            'O' => {
+                rocks.push(Rock {
+                    row,
+                    col,
+                    moves: true,
+                });
+            }
+            '#' => {
+                rocks.push(Rock {
+                    row,
+                    col,
+                    moves: false,
+                });
+            }
+            _ => {
+                ();
+            }
         };
     }
     rocks
 }
 
-fn get_load(rocks: &RockMap, rows: usize) -> usize {
+fn get_load(rocks: &[Rock], rows: usize) -> usize {
     rocks
         .iter()
-        .filter(|(_loc, movable)| **movable)
-        .map(|(loc, _movable)| loc.0.abs_diff(rows))
+        .filter(|r| r.moves)
+        .map(|r| r.row.abs_diff(rows))
         .sum()
 }
 
@@ -37,7 +56,7 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
         tasks.push(task);
     }
 
-    let mut rocks = BTreeMap::new();
+    let mut rocks = Vec::new();
 
     for task in tasks {
         if let Ok(mut new_rocks) = task.await {
@@ -52,7 +71,7 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
     tilt(&mut rocks1, line_count, line_len, Dir::W);
     tilt(&mut rocks1, line_count, line_len, Dir::S);
     tilt(&mut rocks1, line_count, line_len, Dir::E);
-    let mut load = get_load(&rocks1, line_count);
+    let load = get_load(&rocks1, line_count);
 
     let mut cycles = 1usize;
     let target_cycles = 1000000000usize;
@@ -81,25 +100,27 @@ enum Dir {
     W,
 }
 
-fn tilt(rocks: &mut RockMap, rows: usize, cols: usize, dir: Dir) {
-    let mut stack_top: BTreeMap<_, _> = match dir {
+fn tilt(rocks: &mut Vec<Rock>, rows: usize, cols: usize, dir: Dir) {
+    let mut stack_top: HashMap<_, _> = match dir {
         Dir::N => rocks
-            .range((0, 0)..(0, usize::MAX))
-            .map(|(loc, _movable)| (loc.1, 0))
+            .iter()
+            .filter(|rock| rock.row == 0)
+            .map(|rock| (rock.col, 0))
             .collect(),
         Dir::S => rocks
-            .range((rows - 1, 0)..(rows - 1, usize::MAX))
-            .map(|(loc, _movable)| (loc.1, rows - 1))
+            .iter()
+            .filter(|rock| rock.row == (rows - 1))
+            .map(|rock| (rock.col, rows - 1))
             .collect(),
         Dir::E => rocks
             .iter()
-            .filter(|(&loc, _movable)| loc.1 == (cols - 1))
-            .map(|(loc, _movable)| (loc.0, cols - 1))
+            .filter(|rock| rock.col == (cols - 1))
+            .map(|rock| (rock.row, cols - 1))
             .collect(),
         Dir::W => rocks
             .iter()
-            .filter(|(&loc, _movable)| loc.1 == 0)
-            .map(|(loc, _movable)| (loc.0, 0))
+            .filter(|rock| rock.col == 0)
+            .map(|rock| (rock.row, 0))
             .collect(),
     };
 
@@ -111,18 +132,18 @@ fn tilt(rocks: &mut RockMap, rows: usize, cols: usize, dir: Dir) {
     };
 
     for line in steps.into_iter() {
-        let to_move: Vec<((usize, usize), bool)> = rocks
-            .extract_if(|loc_, movable| {
+        let to_move: Vec<Rock> = rocks
+            .extract_if(|rock| {
                 let loc = match dir {
-                    Dir::N | Dir::S => *loc_,
-                    _ => (loc_.1, loc_.0),
+                    Dir::N | Dir::S => (rock.row, rock.col),
+                    _ => (rock.col, rock.row),
                 };
 
                 if line != loc.0 {
                     return false;
                 }
 
-                if !*movable {
+                if !rock.moves {
                     let stack = stack_top.entry(loc.1).or_insert(loc.0);
                     *stack = loc.0;
                     return false;
@@ -154,9 +175,17 @@ fn tilt(rocks: &mut RockMap, rows: usize, cols: usize, dir: Dir) {
 
         let mut to_move = to_move
             .into_iter()
-            .map(|(loc, movable)| match dir {
-                Dir::N | Dir::S => ((*stack_top.get(&loc.1).unwrap(), loc.1), movable),
-                Dir::E | Dir::W => ((loc.0, *stack_top.get(&loc.0).unwrap()), movable),
+            .map(|rock| match dir {
+                Dir::N | Dir::S => Rock {
+                    row: *stack_top.get(&rock.col).unwrap(),
+                    col: rock.col,
+                    moves: rock.moves,
+                },
+                Dir::E | Dir::W => Rock {
+                    row: rock.row,
+                    col: *stack_top.get(&rock.row).unwrap(),
+                    moves: rock.moves,
+                },
             })
             .collect();
 

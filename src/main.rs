@@ -16,6 +16,11 @@ async fn main() {
     };
     dbg!(&filename);
     let input_data = match day.as_str() {
+        "15" => std::fs::read_to_string(filename)
+            .expect("Can't read input file")
+            .split(',')
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>(),
         "05" | "13" => std::fs::read_to_string(filename)
             .expect("Can't read input file")
             .split("\n\n")
@@ -79,6 +84,7 @@ async fn main() {
         "12" => day12::solve(rx).await,
         "13" => day13::solve(rx).await,
         "14" => day14::solve(rx2).await,
+        "15" => day15::solve(rx).await,
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }

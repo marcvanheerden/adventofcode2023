@@ -1,11 +1,7 @@
-use futures::future::{BoxFuture, FutureExt};
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use std::{thread, time};
 use tokio::sync::mpsc::Receiver;
-use tokio::time::sleep;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Copy)]
 enum Dir {
     N,
     E,
@@ -33,24 +29,24 @@ impl Mirror {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Copy)]
 struct Beam {
     location: (usize, usize),
     direction: Dir,
 }
 
 impl Beam {
-    fn hit_mirror(&mut self, mirror: Arc<Mirror>) -> Option<Self> {
+    fn hit_mirror(&mut self, mirror: &Mirror) -> Option<Self> {
         match (*mirror, &self.direction) {
             (Mirror::Hori, Dir::N | Dir::S) => {
                 self.direction = Dir::W;
-                let mut extra_beam = self.clone();
+                let mut extra_beam = *self;
                 extra_beam.direction = Dir::E;
                 return Some(extra_beam);
             }
             (Mirror::Vert, Dir::E | Dir::W) => {
                 self.direction = Dir::N;
-                let mut extra_beam = self.clone();
+                let mut extra_beam = *self;
                 extra_beam.direction = Dir::S;
                 return Some(extra_beam);
             }
@@ -68,7 +64,7 @@ impl Beam {
         None
     }
 
-    fn out_of_bounds(&self, bounds: Arc<(usize, usize)>) -> bool {
+    fn out_of_bounds(&self, bounds: &(usize, usize)) -> bool {
         ((self.direction == Dir::N) & (self.location.0 == 0))
             | ((self.direction == Dir::S) & (self.location.0 == bounds.0))
             | ((self.direction == Dir::E) & (self.location.1 == bounds.1))
@@ -77,8 +73,8 @@ impl Beam {
 
     fn step(
         &mut self,
-        mirrors: Arc<HashMap<(usize, usize), Mirror>>,
-        bounds: Arc<(usize, usize)>,
+        mirrors: &HashMap<(usize, usize), Mirror>,
+        bounds: &(usize, usize),
     ) -> (bool, Option<Self>) {
         // check if next step is out of bounds
         if self.out_of_bounds(bounds) {
@@ -96,56 +92,12 @@ impl Beam {
         // if a mirror is at the new location, potentially change direction
         // and possibly split into a new beam
         if let Some(&mirror) = mirrors.get(&self.location) {
-            if let Some(new_beam) = self.hit_mirror(Arc::new(mirror)) {
+            if let Some(new_beam) = self.hit_mirror(&mirror) {
                 return (true, Some(new_beam));
             }
         }
 
         (true, None)
-    }
-
-    fn trace<'a>(
-        &'a mut self,
-        history: Vec<Self>,
-        mirrors: Arc<HashMap<(usize, usize), Mirror>>,
-        bounds: Arc<(usize, usize)>,
-    ) -> BoxFuture<'a, Vec<(usize, usize)>> {
-        async move {
-            let mut path = vec![self.location];
-            let mut history = history.clone();
-
-            let mut subtraces = Vec::new();
-
-            loop {
-                history.push(self.clone());
-                let (in_bounds, new_beam) = self.step(mirrors.clone(), bounds.clone());
-                path.push(self.location);
-
-                if let Some(mut beam) = new_beam {
-                    let mirrors_clone = Arc::clone(&mirrors);
-                    let bounds_clone = Arc::clone(&bounds);
-                    let hist_clone = history.clone();
-
-                    let task = tokio::spawn(async move {
-                        beam.trace(hist_clone, mirrors_clone, bounds_clone).await
-                    });
-                    subtraces.push(task);
-                }
-
-                if !in_bounds | history.contains(self) {
-                    break;
-                }
-            }
-
-            for task in subtraces {
-                if let Ok(mut new_path) = task.await {
-                    path.append(&mut new_path);
-                }
-            }
-
-            path
-        }
-        .boxed()
     }
 }
 
@@ -181,48 +133,92 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
         }
     }
 
-    let mut beam = Beam {
+    let beam = Beam {
         location: (0, 0),
         direction: Dir::E,
     };
 
-    if let Some(mirror) = mirrors.get(&beam.location) {
-        beam.hit_mirror(Arc::new(*mirror));
+    let part1 = trace_beam(beam, &mirrors, &(row_bound, col_bound));
+    let part2 = best_trace_beam(&mirrors, &(row_bound, col_bound));
+
+    println!("Part 1: {part1} Part 2: {part2} ");
+}
+
+fn best_trace_beam(mirrors: &HashMap<(usize, usize), Mirror>, bounds: &(usize, usize)) -> usize {
+    let mut scores: Vec<(Beam, usize)> = Vec::new();
+
+    for row in 0..=bounds.0 {
+        let beam1 = Beam {
+            location: (row, 0),
+            direction: Dir::E,
+        };
+        let beam2 = Beam {
+            location: (row, bounds.1),
+            direction: Dir::W,
+        };
+        let score1 = trace_beam(beam1, mirrors, bounds);
+        let score2 = trace_beam(beam2, mirrors, bounds);
+        scores.push((beam1, score1));
+        scores.push((beam2, score2));
     }
 
-    let pos_visited: HashSet<(usize, usize)> = beam
-        .trace(
-            Vec::new(),
-            Arc::new(mirrors),
-            Arc::new((row_bound, col_bound)),
-        )
-        .await
-        .into_iter()
-        .collect();
+    for col in 0..=bounds.1 {
+        let beam1 = Beam {
+            location: (0, col),
+            direction: Dir::S,
+        };
+        let beam2 = Beam {
+            location: (bounds.0, col),
+            direction: Dir::N,
+        };
+        let score1 = trace_beam(beam1, mirrors, bounds);
+        let score2 = trace_beam(beam2, mirrors, bounds);
+        scores.push((beam1, score1));
+        scores.push((beam2, score2));
+    }
 
-    for y in 0..row_bound {
-        println!();
-        for x in 0..col_bound {
-            if pos_visited.contains(&(y, x)) {
-                print!("{}", '#');
-            } else {
-                print!("{}", '.');
+    *scores.iter().map(|(_beam, score)| score).max().unwrap()
+}
+
+fn trace_beam(
+    start: Beam,
+    mirrors: &HashMap<(usize, usize), Mirror>,
+    bounds: &(usize, usize),
+) -> usize {
+    let mut start = start;
+    if let Some(mirror) = mirrors.get(&start.location) {
+        start.hit_mirror(mirror);
+    }
+
+    let mut queue = vec![start];
+    let mut history = HashSet::new();
+    history.insert(start);
+
+    loop {
+        let mut next_steps = Vec::new();
+
+        for beam in queue.iter_mut() {
+            let (valid, extra_beam) = beam.step(mirrors, bounds);
+            if !valid | history.contains(beam) {
+                continue;
             }
+            history.insert(*beam);
+            next_steps.push(*beam);
+
+            if let Some(new_beam) = extra_beam {
+                next_steps.push(new_beam);
+                history.insert(new_beam);
+            }
+        }
+
+        if next_steps.is_empty() {
+            break;
+        } else {
+            queue = next_steps;
         }
     }
 
-    let part1 = pos_visited.len();
+    let locations: HashSet<_> = history.into_iter().map(|b| b.location).collect();
 
-    println!("Part 1: {part1} Part 2: ");
+    locations.len()
 }
-
-//######....
-//.#...#....
-//.#...#####
-//.#...##...
-//.#...##...
-//.#...##...
-//.#..####..
-//########..
-//.#######..
-//.#...#.#..

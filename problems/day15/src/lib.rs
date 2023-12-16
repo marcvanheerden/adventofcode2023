@@ -1,5 +1,4 @@
 use tokio::sync::mpsc::Receiver;
-use tokio::time::{sleep, Duration};
 
 const EMPTYBUCKET: Vec<Lens> = Vec::new();
 
@@ -24,7 +23,6 @@ pub async fn solve(mut rx: Receiver<String>) {
     let mut tasks = Vec::new();
 
     while let Some(section) = rx.recv().await {
-        //sleep(Duration::from_millis(1)).await;
         let task = tokio::spawn(async move {
             let part1 = hash_section(&section);
 

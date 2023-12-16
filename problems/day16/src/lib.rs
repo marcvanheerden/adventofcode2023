@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Copy)]
@@ -64,7 +65,7 @@ impl Beam {
         None
     }
 
-    fn out_of_bounds(&self, bounds: &(usize, usize)) -> bool {
+    fn out_of_bounds(&self, bounds: Arc<(usize, usize)>) -> bool {
         ((self.direction == Dir::N) & (self.location.0 == 0))
             | ((self.direction == Dir::S) & (self.location.0 == bounds.0))
             | ((self.direction == Dir::E) & (self.location.1 == bounds.1))
@@ -73,8 +74,8 @@ impl Beam {
 
     fn step(
         &mut self,
-        mirrors: &HashMap<(usize, usize), Mirror>,
-        bounds: &(usize, usize),
+        mirrors: Arc<HashMap<(usize, usize), Mirror>>,
+        bounds: Arc<(usize, usize)>,
     ) -> (bool, Option<Self>) {
         // check if next step is out of bounds
         if self.out_of_bounds(bounds) {
@@ -138,15 +139,22 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
         direction: Dir::E,
     };
 
-    let part1 = trace_beam(beam, &mirrors, &(row_bound, col_bound));
-    let part2 = best_trace_beam(&mirrors, &(row_bound, col_bound));
+    let part1 = trace_beam(
+        beam,
+        Arc::new(mirrors.clone()),
+        Arc::new((row_bound, col_bound)),
+    )
+    .await;
+    let part2 = best_trace_beam(Arc::new(mirrors), Arc::new((row_bound, col_bound))).await;
 
     println!("Part 1: {part1} Part 2: {part2} ");
 }
 
-fn best_trace_beam(mirrors: &HashMap<(usize, usize), Mirror>, bounds: &(usize, usize)) -> usize {
-    let mut scores: Vec<(Beam, usize)> = Vec::new();
-
+async fn best_trace_beam(
+    mirrors: Arc<HashMap<(usize, usize), Mirror>>,
+    bounds: Arc<(usize, usize)>,
+) -> usize {
+    let mut beams = Vec::new();
     for row in 0..=bounds.0 {
         let beam1 = Beam {
             location: (row, 0),
@@ -156,10 +164,8 @@ fn best_trace_beam(mirrors: &HashMap<(usize, usize), Mirror>, bounds: &(usize, u
             location: (row, bounds.1),
             direction: Dir::W,
         };
-        let score1 = trace_beam(beam1, mirrors, bounds);
-        let score2 = trace_beam(beam2, mirrors, bounds);
-        scores.push((beam1, score1));
-        scores.push((beam2, score2));
+        beams.push(beam1);
+        beams.push(beam2);
     }
 
     for col in 0..=bounds.1 {
@@ -171,19 +177,32 @@ fn best_trace_beam(mirrors: &HashMap<(usize, usize), Mirror>, bounds: &(usize, u
             location: (bounds.0, col),
             direction: Dir::N,
         };
-        let score1 = trace_beam(beam1, mirrors, bounds);
-        let score2 = trace_beam(beam2, mirrors, bounds);
-        scores.push((beam1, score1));
-        scores.push((beam2, score2));
+        beams.push(beam1);
+        beams.push(beam2);
+    }
+    let mut tasks = Vec::new();
+
+    for beam in beams.into_iter() {
+        let mirrors_clone = Arc::clone(&mirrors);
+        let bounds_clone = Arc::clone(&bounds);
+        let task = tokio::spawn(async move { trace_beam(beam, mirrors_clone, bounds_clone).await });
+        tasks.push(task);
     }
 
-    *scores.iter().map(|(_beam, score)| score).max().unwrap()
+    let mut top_score = 0usize;
+    for task in tasks {
+        if let Ok(score) = task.await {
+            top_score = std::cmp::max(top_score, score);
+        }
+    }
+
+    top_score
 }
 
-fn trace_beam(
+async fn trace_beam(
     start: Beam,
-    mirrors: &HashMap<(usize, usize), Mirror>,
-    bounds: &(usize, usize),
+    mirrors: Arc<HashMap<(usize, usize), Mirror>>,
+    bounds: Arc<(usize, usize)>,
 ) -> usize {
     let mut start = start;
     if let Some(mirror) = mirrors.get(&start.location) {
@@ -198,7 +217,7 @@ fn trace_beam(
         let mut next_steps = Vec::new();
 
         for beam in queue.iter_mut() {
-            let (valid, extra_beam) = beam.step(mirrors, bounds);
+            let (valid, extra_beam) = beam.step(mirrors.clone(), bounds.clone());
             if !valid | history.contains(beam) {
                 continue;
             }

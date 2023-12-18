@@ -12,46 +12,47 @@ enum Direction {
 }
 
 fn count_enclosed(
-    max_rows: isize,
-    max_cols: isize,
+    row_limits: (isize, isize),
+    col_limits: (isize, isize),
     path: &[Step],
     print: bool,
 ) -> (isize, isize, isize) {
     let mut nonpath_cells = Vec::new();
     let path_positions: Vec<_> = path.iter().map(|a| a.location).collect();
-    for row in 0..=max_rows {
-        for col in 0..=max_cols {
+    for row in row_limits.0..=row_limits.1 {
+        for col in col_limits.0..=col_limits.1 {
             if !path_positions.contains(&(row, col)) {
                 nonpath_cells.push((row, col));
             }
         }
     }
 
-    dbg!("A");
     let mut areas = Vec::new();
-    let mut current_area = vec![nonpath_cells.pop().unwrap()];
+    let mut current_area = vec![vec![nonpath_cells.pop().unwrap()]];
     while !nonpath_cells.is_empty() {
-        let mut flood: Vec<_> = nonpath_cells
+        let flood: Vec<_> = nonpath_cells
             .extract_if(|c| {
                 current_area
+                    .last()
+                    .unwrap()
                     .iter()
                     .any(|c2| (c.0.abs_diff(c2.0) <= 1) & (c.1.abs_diff(c2.1) <= 1))
             })
             .collect();
 
         if flood.is_empty() {
-            areas.push(current_area.clone());
+            let current_area_flat: Vec<_> = current_area.iter().cloned().flatten().collect();
+            areas.push(current_area_flat);
             current_area.clear();
             if let Some(cell) = nonpath_cells.pop() {
-                current_area = vec![cell];
+                current_area = vec![vec![cell]];
             }
         } else {
-            current_area.append(&mut flood);
+            current_area.push(flood);
         }
     }
-
-    dbg!("B");
-    areas.push(current_area);
+    let current_area_flat: Vec<_> = current_area.iter().cloned().flatten().collect();
+    areas.push(current_area_flat);
 
     let right: Vec<_> = areas
         .clone()
@@ -60,7 +61,6 @@ fn count_enclosed(
         .flatten()
         .collect();
 
-    dbg!("C");
     let left: Vec<_> = areas
         .into_iter()
         .filter(|a| a.iter().any(|c| path.iter().any(|a| a.left_side(c))))
@@ -68,14 +68,14 @@ fn count_enclosed(
         .collect();
 
     assert_eq!(
-        (max_rows + 1) * (max_cols + 1),
+        (row_limits.1 - row_limits.0 + 1) * (col_limits.1 - col_limits.0 + 1),
         (right.len() + left.len() + path.len()).try_into().unwrap()
     );
 
     if print {
         println!();
-        for row in 0..=max_rows {
-            for col in 0..=max_cols {
+        for row in row_limits.0..=row_limits.1 {
+            for col in col_limits.0..=col_limits.1 {
                 if path_positions.contains(&(row, col)) {
                     print!("{}", '#'.to_string().red());
                 } else if right.contains(&(row, col)) & left.contains(&(row, col)) {
@@ -153,7 +153,6 @@ struct Digger {
 struct Move {
     direction: Direction,
     magnitude: isize,
-    colour: u32,
 }
 
 fn moves_to_steps(moves: &[Move]) -> Vec<Step> {
@@ -187,10 +186,63 @@ fn moves_to_steps(moves: &[Move]) -> Vec<Step> {
     output
 }
 
-async fn parse_line(line: &str) -> Move {
+fn discrete_to_continuous(current_dir: Direction, next_dir: Direction) -> (f64, f64) {
+    match (current_dir, next_dir) {
+        (Direction::U, Direction::L) => (0.5, -0.5),
+        (Direction::U, Direction::R) => (-0.5, -0.5),
+        (Direction::L, Direction::U) => (0.5, -0.5),
+        (Direction::L, Direction::D) => (0.5, 0.5),
+        (Direction::D, Direction::L) => (0.5, 0.5),
+        (Direction::D, Direction::R) => (-0.5, 0.5),
+        (Direction::R, Direction::D) => (-0.5, 0.5),
+        (Direction::R, Direction::U) => (-0.5, -0.5),
+        _ => panic!("180s are radical but not allowed"),
+    }
+}
+
+fn gauss_area(moves: &[Move]) -> f64 {
+    // assumes clockwise traversal
+    let adj = discrete_to_continuous(
+        moves.last().unwrap().direction,
+        moves.first().unwrap().direction,
+    );
+    let mut points: Vec<(isize, isize, f64, f64)> = vec![(0, 0, adj.0, adj.1)];
+
+    for moves in moves.windows(2) {
+        let adj = discrete_to_continuous(moves[0].direction, moves[1].direction);
+
+        let diff = match moves[0].direction {
+            Direction::U => (-1isize, 0isize),
+            Direction::R => (0, 1),
+            Direction::D => (1, 0),
+            Direction::L => (0, -1),
+        };
+
+        let next_point = if let Some(point) = points.last() {
+            (
+                point.0 + moves[0].magnitude * diff.0,
+                point.1 + moves[0].magnitude * diff.1,
+                (point.0 + moves[0].magnitude * diff.0) as f64 + adj.0,
+                (point.1 + moves[0].magnitude * diff.1) as f64 + adj.1,
+            )
+        } else {
+            (0isize, 0isize, 0f64, 0f64)
+        };
+        points.push(next_point);
+    }
+    points.push(points[0].clone());
+
+    let sums: (f64, f64) = points
+        .windows(2)
+        .map(|w| (w[0].2 * w[1].3, w[1].2 * w[0].3))
+        .fold((0.0, 0.0), |acc, (x, y)| (acc.0 + x, acc.1 + y));
+
+    (sums.0 - sums.1).abs() / 2.0
+}
+
+async fn parse_line(line: &str) -> (Move, Move) {
     let line = line.replace(['(', ')', '#'], "");
     let parts: Vec<_> = line.split(' ').collect();
-    let colour = u32::from_str_radix(parts[2], 16).unwrap();
     let magnitude = parts[1].parse::<isize>().unwrap();
 
     let direction = match parts[0] {
@@ -201,11 +253,29 @@ async fn parse_line(line: &str) -> Move {
         _ => panic!("incorrect input format"),
     };
 
-    Move {
+    let move1 = Move {
         direction,
         magnitude,
-        colour,
-    }
+    };
+
+    let direction = match parts[2].chars().next_back().unwrap() {
+        '0' => Direction::R,
+        '1' => Direction::D,
+        '2' => Direction::L,
+        '3' => Direction::U,
+        _ => panic!("incorrect input format"),
+    };
+
+    let magnitude =
+        isize::from_str_radix(&parts[2].chars().take(5).collect::<String>(), 16).unwrap();
+
+    (
+        move1,
+        Move {
+            direction,
+            magnitude,
+        },
+    )
 }
 
 pub async fn solve(mut rx: Receiver<(usize, String)>) {
@@ -215,48 +285,23 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
     }
 
     holder.sort_by_key(|f| f.0);
-    let mut moves = Vec::new();
+    let mut moves1 = Vec::new();
+    let mut moves2 = Vec::new();
 
-    for (_, move_) in holder.into_iter() {
-        moves.push(move_);
+    for (_, moves) in holder.into_iter() {
+        moves1.push(moves.0);
+        moves2.push(moves.1);
     }
 
-    let steps = moves_to_steps(&moves);
+    let steps = moves_to_steps(&moves1);
 
+    let min_rows = steps.iter().map(|s| s.location.0).min().unwrap();
     let max_rows = steps.iter().map(|s| s.location.0).max().unwrap();
+    let min_cols = steps.iter().map(|s| s.location.1).min().unwrap();
     let max_cols = steps.iter().map(|s| s.location.1).max().unwrap();
 
-    let part1 = count_enclosed(max_rows, max_cols, &steps, true);
+    let part1 = gauss_area(&moves1);
+    let part2 = gauss_area(&moves2);
 
-    //let task1 = tokio::spawn(async move { map1.find_best_path(start1, 1, 3).await });
-    //let task2 = tokio::spawn(async move { map2.find_best_path(start2, 4, 10).await });
-    //let part1 = task1.await.unwrap();
-    //let part2 = task2.await.unwrap();
-
-    let part2 = 2;
     println!("Part 1: {:?} Part 2: {}", part1, part2);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // thanks https://blog.x5ff.xyz/blog/async-tests-tokio-rust/
-    macro_rules! aw {
-        ($e:expr) => {
-            tokio_test::block_on($e)
-        };
-    }
-
-    #[test]
-    fn test_parse() {
-        assert_eq!(
-            aw!(parse_line("R 6 (#70c710)")),
-            Move {
-                direction: Direction::R,
-                magnitude: 6,
-                colour: 7390992
-            }
-        );
-    }
 }

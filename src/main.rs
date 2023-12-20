@@ -88,6 +88,7 @@ async fn main() {
         "16" => day16::solve(rx2).await,
         "17" => day17::solve(rx2).await,
         "18" => day18::solve(rx2).await,
+        "19" => day19::solve(rx).await,
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }

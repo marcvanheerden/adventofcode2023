@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 use tokio::sync::mpsc::Receiver;
 
@@ -15,11 +15,11 @@ async fn parse_line(line_no: usize, line: &str) -> (Vec<(usize, usize)>, Option<
         })
         .collect();
 
-    let plots = line
+    let rocks = line
         .chars()
         .enumerate()
         .filter_map(|(col, chr)| {
-            if ['.', 'S'].contains(&chr) {
+            if ['#'].contains(&chr) {
                 Some((line_no, col))
             } else {
                 None
@@ -27,36 +27,67 @@ async fn parse_line(line_no: usize, line: &str) -> (Vec<(usize, usize)>, Option<
         })
         .collect();
 
-    (plots, start.first().copied())
+    (rocks, start.first().copied())
 }
 
-fn neighbours(loc: &(usize, usize), map: &HashSet<(usize, usize)>) -> Vec<(usize, usize)> {
-    map.iter()
-        .filter_map(|(y, x)| {
-            if (loc.0.abs_diff(*y) + loc.1.abs_diff(*x)) == 1 {
-                Some((*y, *x))
-            } else {
-                None
-            }
-        })
+fn neighbours(
+    loc: &(usize, usize),
+    rocks: &HashSet<(usize, usize)>,
+    lower_bound: Option<(usize, usize)>,
+    upper_bound: Option<(usize, usize)>,
+) -> Vec<(usize, usize)> {
+    let mut output = Vec::new();
+
+    if let Some(lower) = lower_bound {
+        if loc.0 > lower.0 {
+            output.push((loc.0 - 1, loc.1));
+        }
+        if loc.1 > lower.1 {
+            output.push((loc.0, loc.1 - 1));
+        }
+    } else {
+        output.push((loc.0 - 1, loc.1));
+        output.push((loc.0, loc.1 - 1));
+    }
+
+    if let Some(upper) = upper_bound {
+        if loc.0 < upper.0 {
+            output.push((loc.0 + 1, loc.1));
+        }
+        if loc.1 < upper.1 {
+            output.push((loc.0, loc.1 + 1));
+        }
+    } else {
+        output.push((loc.0 + 1, loc.1));
+        output.push((loc.0, loc.1 + 1));
+    }
+
+    output
+        .into_iter()
+        .filter(|loc| !rocks.contains(loc))
         .collect()
 }
 
-fn visit_gardens(plots: &HashSet<(usize, usize)>, start: &(usize, usize), steps: usize) -> usize {
+fn visit_gardens(
+    rocks: &HashSet<(usize, usize)>,
+    lower_bound: Option<(usize, usize)>,
+    upper_bound: Option<(usize, usize)>,
+    start: &(usize, usize),
+    steps: usize,
+) -> usize {
     let mut positions = HashSet::new();
     positions.insert(*start);
 
     let mut cache: HashMap<(usize, usize), Vec<(usize, usize)>> = HashMap::new();
 
     for x in 0..steps {
-        dbg!(&positions.len());
         let mut next_positions = HashSet::new();
 
         for step in positions.iter() {
             let nbors = if let Some(nbors) = cache.get(step) {
                 nbors.clone()
             } else {
-                let nbors = neighbours(step, plots);
+                let nbors = neighbours(step, rocks, lower_bound, upper_bound);
                 cache.insert(*step, nbors.clone());
                 nbors
             };
@@ -78,17 +109,24 @@ fn visit_gardens(plots: &HashSet<(usize, usize)>, start: &(usize, usize), steps:
 
 pub async fn solve(mut rx: Receiver<(usize, String)>) {
     let mut tasks = Vec::new();
+    let mut rows = 0;
+    let mut cols = 0;
     while let Some((line_no, line)) = rx.recv().await {
+        if line.is_empty() {
+            continue;
+        }
+        rows = std::cmp::max(rows, line_no);
+        cols = std::cmp::max(cols, line.trim().len());
         let task = tokio::spawn(async move { parse_line(line_no, &line).await });
         tasks.push(task);
     }
 
-    let mut plots = HashSet::new();
+    let mut rocks = HashSet::new();
     let mut start = (0, 0);
     for task in tasks {
-        if let Ok((plots_, start_)) = task.await {
-            for plot in plots_.into_iter() {
-                plots.insert(plot);
+        if let Ok((rocks_, start_)) = task.await {
+            for rock in rocks_.into_iter() {
+                rocks.insert(rock);
             }
             if let Some(starting_point) = start_ {
                 start = starting_point;
@@ -96,7 +134,7 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
         }
     }
 
-    let part1 = visit_gardens(&plots, &start, 64);
+    let part1 = visit_gardens(&rocks, Some((0, 0)), Some((rows, cols - 1)), &start, 64);
     let part2 = 1;
 
     println!("Part 1: {} Part 2: {}", part1, part2);

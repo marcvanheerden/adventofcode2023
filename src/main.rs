@@ -57,7 +57,7 @@ async fn main() {
     let (tx2, rx2) = mpsc::channel(100_000);
 
     match day.as_str() {
-        "03" | "04" | "10" | "11" | "14" | "16" | "17" | "18" => {
+        "03" | "04" | "10" | "11" | "14" | "16" | "17" | "18" | "21" => {
             tokio::spawn(async move {
                 input_simulator::simulate_user_input_enumerated(tx2, input_data).await;
             });
@@ -89,6 +89,7 @@ async fn main() {
         "17" => day17::solve(rx2).await,
         "18" => day18::solve(rx2).await,
         "19" => day19::solve(rx).await,
+        "21" => day21::solve(rx2).await,
         _ => eprintln!("Solution for day {} not implemented", day),
     };
 }

@@ -2,13 +2,13 @@ use std::collections::{HashMap, HashSet};
 
 use tokio::sync::mpsc::Receiver;
 
-async fn parse_line(line_no: usize, line: &str) -> (Vec<(usize, usize)>, Option<(usize, usize)>) {
+async fn parse_line(line_no: isize, line: &str) -> (Vec<(isize, isize)>, Option<(isize, isize)>) {
     let start: Vec<_> = line
         .chars()
         .enumerate()
         .filter_map(|(col, chr)| {
             if chr == 'S' {
-                Some((line_no, col))
+                Some((line_no, col.try_into().unwrap()))
             } else {
                 None
             }
@@ -20,7 +20,7 @@ async fn parse_line(line_no: usize, line: &str) -> (Vec<(usize, usize)>, Option<
         .enumerate()
         .filter_map(|(col, chr)| {
             if ['#'].contains(&chr) {
-                Some((line_no, col))
+                Some((line_no, col.try_into().unwrap()))
             } else {
                 None
             }
@@ -31,11 +31,11 @@ async fn parse_line(line_no: usize, line: &str) -> (Vec<(usize, usize)>, Option<
 }
 
 fn neighbours(
-    loc: &(usize, usize),
-    rocks: &HashSet<(usize, usize)>,
-    lower_bound: Option<(usize, usize)>,
-    upper_bound: Option<(usize, usize)>,
-) -> Vec<(usize, usize)> {
+    loc: &(isize, isize),
+    rocks: &HashSet<(isize, isize)>,
+    lower_bound: Option<(isize, isize)>,
+    upper_bound: Option<(isize, isize)>,
+) -> Vec<(isize, isize)> {
     let mut output = Vec::new();
 
     if let Some(lower) = lower_bound {
@@ -69,18 +69,18 @@ fn neighbours(
 }
 
 fn visit_gardens(
-    rocks: &HashSet<(usize, usize)>,
-    lower_bound: Option<(usize, usize)>,
-    upper_bound: Option<(usize, usize)>,
-    start: &(usize, usize),
-    steps: usize,
+    rocks: &HashSet<(isize, isize)>,
+    lower_bound: Option<(isize, isize)>,
+    upper_bound: Option<(isize, isize)>,
+    start: &(isize, isize),
+    steps: isize,
 ) -> usize {
     let mut positions = HashSet::new();
     positions.insert(*start);
 
-    let mut cache: HashMap<(usize, usize), Vec<(usize, usize)>> = HashMap::new();
+    let mut cache: HashMap<(isize, isize), Vec<(isize, isize)>> = HashMap::new();
 
-    for x in 0..steps {
+    for _ in 0..steps {
         let mut next_positions = HashSet::new();
 
         for step in positions.iter() {
@@ -115,8 +115,9 @@ pub async fn solve(mut rx: Receiver<(usize, String)>) {
         if line.is_empty() {
             continue;
         }
+        let line_no: isize = line_no.try_into().unwrap();
         rows = std::cmp::max(rows, line_no);
-        cols = std::cmp::max(cols, line.trim().len());
+        cols = std::cmp::max(cols, line.trim().len().try_into().unwrap());
         let task = tokio::spawn(async move { parse_line(line_no, &line).await });
         tasks.push(task);
     }

@@ -35,32 +35,31 @@ struct Progress {
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct ProgressCanClimb {
     loc: (usize, usize),
-    history: HashSet<(usize, usize)>,
+    last_loc: (usize, usize),
+    slope_history: HashSet<(usize, usize)>,
+    steps: usize,
 }
 
 fn next_steps(
     loc: &(usize, usize),
     map: &HashMap<(usize, usize), PathSlope>,
-    can_climb: bool,
 ) -> Vec<(usize, usize)> {
     // short circuit if on a slope
 
-    if !can_climb {
-        if let Some(pathslope) = map.get(loc) {
-            match pathslope {
-                PathSlope::Path => (),
-                PathSlope::SlopeN => return vec![(loc.0 - 1, loc.1)],
-                PathSlope::SlopeE => return vec![(loc.0, loc.1 + 1)],
-                PathSlope::SlopeW => return vec![(loc.0, loc.1 - 1)],
-                PathSlope::SlopeS => return vec![(loc.0 + 1, loc.1)],
-            }
+    if let Some(pathslope) = map.get(loc) {
+        match pathslope {
+            PathSlope::Path => (),
+            PathSlope::SlopeN => return vec![(loc.0 - 1, loc.1)],
+            PathSlope::SlopeE => return vec![(loc.0, loc.1 + 1)],
+            PathSlope::SlopeW => return vec![(loc.0, loc.1 - 1)],
+            PathSlope::SlopeS => return vec![(loc.0 + 1, loc.1)],
         }
     }
 
     let mut moves = Vec::new();
     if loc.0 > 0 {
         if let Some(pathslope) = map.get(&(loc.0 - 1, loc.1)) {
-            if can_climb | (*pathslope != PathSlope::SlopeS) {
+            if *pathslope != PathSlope::SlopeS {
                 moves.push((loc.0 - 1, loc.1));
             }
         }
@@ -68,75 +67,148 @@ fn next_steps(
 
     if loc.1 > 0 {
         if let Some(pathslope) = map.get(&(loc.0, loc.1 - 1)) {
-            if can_climb | (*pathslope != PathSlope::SlopeE) {
+            if *pathslope != PathSlope::SlopeE {
                 moves.push((loc.0, loc.1 - 1));
             }
         }
     }
 
     if let Some(pathslope) = map.get(&(loc.0 + 1, loc.1)) {
-        if can_climb | (*pathslope != PathSlope::SlopeN) {
+        if *pathslope != PathSlope::SlopeN {
             moves.push((loc.0 + 1, loc.1));
         }
     }
 
     if let Some(pathslope) = map.get(&(loc.0, loc.1 + 1)) {
-        if can_climb | (*pathslope != PathSlope::SlopeW) {
+        if *pathslope != PathSlope::SlopeW {
             moves.push((loc.0, loc.1 + 1));
         }
     }
 
     moves
 }
+
+fn nbors(loc: &(usize, usize)) -> Vec<(usize, usize)> {
+    let mut output = vec![(loc.0 + 1, loc.1), (loc.0, loc.1 + 1)];
+
+    if loc.0 > 0 {
+        output.push((loc.0 - 1, loc.1));
+    }
+    if loc.1 > 0 {
+        output.push((loc.0, loc.1 - 1));
+    }
+
+    output
+}
+
 fn longest_route_can_climb(
     map: &HashMap<(usize, usize), PathSlope>,
     start: (usize, usize),
     end_row: usize,
 ) -> usize {
-    let mut queue = vec![ProgressCanClimb {
-        loc: start,
-        history: HashSet::new(),
-    }];
+    // ported from https://gist.github.com/ke-hermann/279f352829cd590d61104c27cac59bdc
+    let paths: HashSet<(usize, usize)> = map.keys().cloned().collect();
+    let mut neighbours = HashMap::new();
 
-    let mut longest = 0usize;
+    for point in paths.iter() {
+        let point_nbors: Vec<(usize, usize)> = nbors(point)
+            .into_iter()
+            .filter(|p| paths.contains(p))
+            .collect();
 
-    loop {
-        dbg!(&queue.len());
-        let mut next_queue = Vec::new();
+        neighbours.insert(*point, point_nbors);
+    }
 
-        for step in queue.iter().take(10000) {
-            if step.loc.0 == end_row {
-                longest = std::cmp::max(longest, step.history.len());
-                dbg!(&longest);
-                continue;
-            }
+    let mut intersections: HashSet<(usize, usize)> = neighbours
+        .iter()
+        .filter(|(_k, v)| v.len() >= 3)
+        .map(|(k, _v)| *k)
+        .collect();
 
-            for next_step in next_steps(&step.loc, map, true) {
-                if step.history.contains(&next_step) {
-                    continue;
-                }
-                let mut history = step.history.clone();
-                history.insert(step.loc);
+    // add start and end points to intersections
+    intersections.insert(start);
+    intersections.insert(*paths.iter().filter(|p| p.0 == end_row).next().unwrap());
 
-                let progress = ProgressCanClimb {
-                    loc: next_step,
-                    history,
-                };
+    let mut graph = HashMap::new();
 
-                if !next_queue.contains(&progress) {
-                    next_queue.push(progress)
-                }
-            }
-        }
-
-        if next_queue.is_empty() {
-            break;
-        } else {
-            next_queue.sort_by_key(|p| p.loc.0 + p.loc.1);
-            queue = next_queue;
+    for inter in intersections.iter() {
+        for neighbour in neighbours.get(&inter).unwrap() {
+            let mut history = HashSet::new();
+            history.insert(*inter);
+            let (point, distance) =
+                intersect_dist(*neighbour, 1, history, &intersections, &neighbours);
+            let entry = graph.entry(*inter).or_insert(Vec::new());
+            entry.push((point, distance));
         }
     }
-    longest
+
+    let mut history = HashSet::new();
+    history.insert(start);
+    breadth_first_search(start, 0, history, end_row, &graph)
+}
+
+fn breadth_first_search(
+    node: (usize, usize),
+    distance: usize,
+    history: HashSet<(usize, usize)>,
+    end_row: usize,
+    graph: &HashMap<(usize, usize), Vec<((usize, usize), usize)>>,
+) -> usize {
+    if node.0 == end_row {
+        return distance;
+    }
+
+    let max = graph
+        .get(&node)
+        .unwrap()
+        .iter()
+        .filter(|(point, _distance)| !history.contains(point))
+        .map(|(point, extra_distance)| {
+            let mut new_history = history.clone();
+            new_history.insert(*point);
+            breadth_first_search(
+                *point,
+                distance + extra_distance,
+                new_history,
+                end_row,
+                graph,
+            )
+        })
+        .max();
+
+    if let Some(max_) = max {
+        max_
+    } else {
+        0
+    }
+}
+
+fn intersect_dist(
+    cur: (usize, usize),
+    dist: usize,
+    history: HashSet<(usize, usize)>,
+    intersections: &HashSet<(usize, usize)>,
+    neighbours: &HashMap<(usize, usize), Vec<(usize, usize)>>,
+) -> ((usize, usize), usize) {
+    if intersections.contains(&cur) {
+        return (cur, dist);
+    }
+
+    if let Some(neighbour) = neighbours
+        .get(&cur)
+        .unwrap()
+        .into_iter()
+        .filter(|p| !history.contains(p))
+        .next()
+    {
+        let mut new_history = history.clone();
+        new_history.insert(cur);
+        return intersect_dist(*neighbour, dist + 1, new_history, intersections, neighbours);
+    }
+    dbg!(&cur);
+    dbg!(neighbours.get(&cur));
+    dbg!(&history);
+    unreachable!();
 }
 
 fn longest_route(
@@ -160,7 +232,7 @@ fn longest_route(
                 continue;
             }
 
-            for next_step in next_steps(&step.loc, map, false) {
+            for next_step in next_steps(&step.loc, map) {
                 if next_step == step.last_loc {
                     continue;
                 }

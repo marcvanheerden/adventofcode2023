@@ -17,11 +17,13 @@ frs: qnr lhk lsr
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use tokio::sync::mpsc::Receiver;
 
-const NODESAMPLE: usize = 25;
+const NODESAMPLE: usize = 35;
 const BRIDGES: usize = 3;
+
+type Graph = HashMap<String, Vec<String>>;
 
 async fn parse_line(line: &str) -> (String, Vec<String>) {
     let (node, edges) = line.split_once(": ").unwrap();
@@ -31,12 +33,12 @@ async fn parse_line(line: &str) -> (String, Vec<String>) {
     )
 }
 
-fn both_ways(graph: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<String>> {
+fn both_ways(graph: &Graph) -> Graph {
     let mut undirected_graph = graph.clone();
 
     for (node, edges) in graph.iter() {
         for edge in edges.iter() {
-            let new_node = undirected_graph.entry(edge.clone()).or_insert(Vec::new());
+            let new_node = undirected_graph.entry(edge.clone()).or_default();
             new_node.push(node.clone());
         }
     }
@@ -44,11 +46,7 @@ fn both_ways(graph: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<String
     undirected_graph
 }
 
-fn find_shortest_path(
-    graph: &HashMap<String, Vec<String>>,
-    start: &str,
-    end: &str,
-) -> Option<Vec<String>> {
+fn find_shortest_path(graph: &Graph, start: &str, end: &str) -> Option<Vec<String>> {
     if start == end {
         return Some(vec![start.to_string()]);
     }
@@ -76,7 +74,7 @@ fn find_shortest_path(
     None
 }
 
-fn find_bridges(graph: &HashMap<String, Vec<String>>, n_bridges: usize) -> Vec<(String, String)> {
+fn find_bridges(graph: &Graph, n_bridges: usize) -> Vec<(String, String)> {
     let seed = [42; 32];
     let mut rng = StdRng::from_seed(seed);
 
@@ -93,7 +91,7 @@ fn find_bridges(graph: &HashMap<String, Vec<String>>, n_bridges: usize) -> Vec<(
             if idx1 >= idx2 {
                 continue;
             }
-            if let Some(path) = find_shortest_path(&graph, node1, node2) {
+            if let Some(path) = find_shortest_path(graph, node1, node2) {
                 shortest_paths.push(path);
             }
         }
@@ -120,6 +118,52 @@ fn find_bridges(graph: &HashMap<String, Vec<String>>, n_bridges: usize) -> Vec<(
         .collect()
 }
 
+fn remove_edges(graph: &Graph, to_remove: &[(String, String)]) -> Graph {
+    let mut graph = graph.clone();
+
+    for (node, edges) in graph.iter_mut() {
+        for (node1, node2) in to_remove.iter() {
+            if node == node1 {
+                edges.retain(|e| e != node2);
+            } else if node == node2 {
+                edges.retain(|e| e != node1);
+            }
+        }
+    }
+
+    graph
+}
+
+fn find_networks(graph: &Graph) -> Vec<Vec<String>> {
+    let mut networks = Vec::new();
+    let mut visited = HashSet::new();
+
+    for node in graph.keys() {
+        if !visited.contains(node) {
+            let mut network = Vec::new();
+            let mut stack = VecDeque::new();
+            stack.push_back(node);
+
+            while let Some(current) = stack.pop_back() {
+                if visited.insert(current.clone()) {
+                    network.push(current.clone());
+                    if let Some(neighbors) = graph.get(current) {
+                        for neighbor in neighbors {
+                            if !visited.contains(neighbor) {
+                                stack.push_back(neighbor);
+                            }
+                        }
+                    }
+                }
+            }
+
+            networks.push(network);
+        }
+    }
+
+    networks
+}
+
 pub async fn solve(mut rx: Receiver<String>) {
     let mut tasks = Vec::new();
     while let Some(line) = rx.recv().await {
@@ -139,5 +183,12 @@ pub async fn solve(mut rx: Receiver<String>) {
 
     graph = both_ways(&graph);
     let remove_bridges = find_bridges(&graph, BRIDGES);
-    dbg!(remove_bridges);
+    graph = remove_edges(&graph, &remove_bridges);
+
+    let part1 = find_networks(&graph)
+        .into_iter()
+        .map(|n| n.len())
+        .collect::<Vec<usize>>();
+
+    dbg!(part1);
 }

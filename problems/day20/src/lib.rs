@@ -1,4 +1,46 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
+use tokio::sync::mpsc::Receiver;
+
+pub async fn solve(mut rx: Receiver<String>) {
+    let mut inputs = Vec::new();
+    while let Some(line) = rx.recv().await {
+        inputs.push(line);
+    }
+
+    let mut circuit = Circuit::new(inputs);
+    let mut tracker = HashMap::new();
+
+    for _ in 0..1000 {
+        if let Some(source) = circuit.press_button() {
+            tracker.insert(source, circuit.steps);
+        }
+    }
+    let part1 = circuit.pulses.0 * circuit.pulses.1;
+    for _ in 0..4000 {
+        if let Some(source) = circuit.press_button() {
+            tracker.insert(source, circuit.steps);
+            if tracker.len() >= 4 {
+                break;
+            }
+        }
+    }
+
+    let part2 = tracker.into_values().fold(1, lcm);
+
+    println!("Part 1: {part1} Part 2: {part2}");
+}
+
+fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
+}
+
+fn lcm(a: usize, b: usize) -> usize {
+    a / gcd(a, b) * b
+}
 
 #[derive(Debug, Clone)]
 struct Circuit {
@@ -9,12 +51,12 @@ struct Circuit {
 }
 
 impl Circuit {
-    fn new(input: &str) -> Self {
+    fn new(input: Vec<String>) -> Self {
         let pulses = (0, 0);
         let mut broadcast = Vec::new();
         let mut modules = Vec::new();
 
-        for line in input.lines().filter(|l| !l.is_empty()) {
+        for line in input.into_iter().filter(|l| !l.is_empty()) {
             let (pre, post) = line.split_once(" -> ").unwrap();
 
             if line.starts_with('%') {
@@ -64,7 +106,7 @@ impl Circuit {
         }
     }
 
-    fn press_button(&mut self) {
+    fn press_button(&mut self) -> Option<String> {
         self.steps += 1;
 
         let mut queue: VecDeque<Pulse> = self
@@ -78,21 +120,20 @@ impl Circuit {
             .collect();
 
         self.pulses.0 += 1 + self.broadcast.len();
+        let mut output = None;
 
         while let Some(pulse) = queue.pop_front() {
             if let Some(module) = self.modules.iter_mut().find(|m| m.is_name(&pulse.to)) {
-                let debug = module.is_name("vr");
-                let pre = module.clone();
+                let capture = module.is_name("vr");
                 for new_pulse in module.receive_pulse(&pulse) {
-                    if debug {
-                        match (pre.clone(), &mut *module) {
-                            (Module::Conjunction(pre), Module::Conjunction(post)) => {
-                                if pre.received != post.received {
-                                    dbg!(&self.steps);
-                                    dbg!(&post);
+                    if capture {
+                        if let Module::Conjunction(post) = &mut *module {
+                            for (source, high) in post.received.iter() {
+                                if *high {
+                                    output = Some(source.clone());
+                                    break;
                                 }
                             }
-                            _ => (),
                         }
                     }
                     if new_pulse.high {
@@ -104,6 +145,8 @@ impl Circuit {
                 }
             }
         }
+
+        output
     }
 }
 

@@ -89,6 +89,7 @@ async fn main() {
         "17" => day17::solve(rx2).await,
         "18" => day18::solve(rx2).await,
         "19" => day19::solve(rx).await,
+        "20" => day20::solve(rx).await,
         "21" => day21::solve(rx2).await,
         "22" => day22::solve(rx2).await,
         "23" => day23::solve(rx2).await,
